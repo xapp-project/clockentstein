@@ -12,7 +12,6 @@ Calendar application for Linux desktops.
 
 ## TODO
 
-- Turn into a singleton app
 - Set up translations
 - Sync reminders info from caldav/google
 - Implement an alarm/reminder/notification service
