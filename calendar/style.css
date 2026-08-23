@@ -67,6 +67,45 @@
 }
 .clockenstein-week-timeline-event { font-size: 1em; }
 
+/* Sidebar date browser */
+.clockenstein-mini-calendar { padding: 4px 2px 8px; }
+.mini-calendar-month, .mini-calendar-year {
+    background: none; border: none; box-shadow: none; padding: 0 2px;
+}
+.mini-calendar-month { font-size: 1.6em; font-weight: bold; }
+.mini-calendar-year { font-size: 1.6em; color: @theme_selected_bg_color; }
+.mini-calendar-month:hover, .mini-calendar-year:hover {
+    background-color: alpha(@theme_fg_color, 0.08);
+}
+.mini-calendar-selector-title { font-size: 1.05em; font-weight: bold; }
+.clockenstein-mini-calendar list { background-color: transparent; }
+.clockenstein-mini-calendar row { border-radius: 4px; }
+
+.mini-calendar-nav {
+    background: none; border: none; box-shadow: none;
+    min-width: 22px; min-height: 22px; padding: 0;
+}
+.mini-calendar-nav:hover { background-color: alpha(@theme_fg_color, 0.08); }
+.mini-calendar-weekday {
+    color: @insensitive_fg_color; font-size: 0.65em; font-weight: bold;
+    padding: 4px 0 2px;
+}
+.mini-calendar-week { border-radius: 12px; }
+.mini-calendar-week.selected { background-color: alpha(@theme_fg_color, 0.10); }
+.mini-calendar-week-number { color: @insensitive_fg_color; font-size: 0.65em; }
+.mini-calendar-day {
+    background: none; border: none; box-shadow: none;
+    border-radius: 12px; min-width: 23px; min-height: 27px; padding: 1px 0;
+    font-size: 0.82em;
+}
+.mini-calendar-day:hover { background-color: alpha(@theme_fg_color, 0.10); }
+.mini-calendar-day.other-month { color: alpha(@theme_fg_color, 0.35); }
+.mini-calendar-day.today { color: @theme_selected_bg_color; font-weight: bold; }
+.mini-calendar-day.selected {
+    background-color: @theme_selected_bg_color;
+    color: @theme_selected_fg_color; font-weight: bold;
+}
+
 /* Misc */
 .clockenstein-date-label { font-weight: bold; font-size: 1.05em; }
 .clockenstein-sync-btn { font-size: 0.85em; }

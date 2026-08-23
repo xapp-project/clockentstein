@@ -39,6 +39,11 @@ install_data(
   install_dir: join_paths(calendar_dir, 'views'),
 )
 
+install_data(
+  'calendar/widgets/mini_calendar.py',
+  install_dir: join_paths(calendar_dir, 'widgets'),
+)
+
 launcher_conf = configuration_data()
 launcher_conf.set('calendar_dir', calendar_dir)
 configure_file(

@@ -14,6 +14,7 @@ from store import CalendarManager
 from views.month_view import MonthView
 from views.week_view import WeekView
 from views.day_view import DayView
+from widgets.mini_calendar import MiniCalendar
 
 
 class MainWindow(Gtk.Window):
@@ -124,9 +125,7 @@ class MainWindow(Gtk.Window):
         outer.set_size_request(225, -1)
         for side in ("top", "bottom", "start", "end"):
             getattr(outer, f"set_margin_{side}")(8)
-        self.mini_cal = Gtk.Calendar()
-        self.mini_cal.connect("day-selected", self._on_mini_cal_selected)
-        self.mini_cal.connect("month-changed", self._on_mini_cal_month)
+        self.mini_cal = MiniCalendar(self.current_date, self._on_mini_date_selected)
         outer.pack_start(self.mini_cal, False, False, 0)
         outer.pack_start(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL), False, False, 4)
 
@@ -505,23 +504,10 @@ class MainWindow(Gtk.Window):
         self._refresh(refresh_remote=self.store.has_remote_accounts)
 
     def _sync_mini_cal(self):
-        d = self.current_date
-        self.mini_cal.handler_block_by_func(self._on_mini_cal_selected)
-        self.mini_cal.handler_block_by_func(self._on_mini_cal_month)
-        self.mini_cal.select_month(d.month - 1, d.year)
-        self.mini_cal.select_day(d.day)
-        self.mini_cal.handler_unblock_by_func(self._on_mini_cal_selected)
-        self.mini_cal.handler_unblock_by_func(self._on_mini_cal_month)
+        self.mini_cal.set_date(self.current_date)
 
-    def _on_mini_cal_selected(self, cal):
-        year, month, day = cal.get_date()
-        self.current_date = datetime.date(year, month + 1, day)
-        self._refresh(refresh_remote=self.store.has_remote_accounts)
-
-    def _on_mini_cal_month(self, cal):
-        year, month, day = cal.get_date()
-        month += 1
-        self.current_date = datetime.date(year, month, min(self.current_date.day, _month_days(year, month)))
+    def _on_mini_date_selected(self, date):
+        self.current_date = date
         self._refresh(refresh_remote=self.store.has_remote_accounts)
 
     def _on_view_toggle(self, button, name):
@@ -619,11 +605,7 @@ class MainWindow(Gtk.Window):
         self.month_view.update(self.current_date, events)
         self.week_view.update(self.current_date, events)
         self.day_view.update(self.current_date, events)
-        self.mini_cal.clear_marks()
-        year, month, day = self.mini_cal.get_date()
-        for event in self.store.get_events():
-            if event["date_start"].year == year and event["date_start"].month == month + 1:
-                self.mini_cal.mark_day(event["date_start"].day)
+        self.mini_cal.set_events(self.store.get_events())
 
     def _update_date_label(self):
         d = self.current_date
