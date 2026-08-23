@@ -15,7 +15,7 @@ from views.day_view import (ALL_DAY_EVENT_MARGIN, ALL_DAY_HEIGHT,
                             DAY_END_MINUTE, DAY_START_MINUTE,
                             _assign_event_columns, _draw_day_grid, _draw_now_line,
                             _minute_to_y,
-                            _timed_segment_minutes)
+                            _initial_scroll_minute, _timed_segment_minutes)
 
 HOUR_HEIGHT = 48
 START_HOUR  = 0
@@ -74,6 +74,7 @@ class WeekView(Gtk.Box):
         self.all_day_body.pack_end(right_all_day, False, False, 0)
 
         scroll = Gtk.ScrolledWindow()
+        self.timeline_scroll = scroll
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         self.pack_start(scroll, True, True, 0)
 
@@ -94,6 +95,7 @@ class WeekView(Gtk.Box):
         self.now_label = Gtk.Label()
         self.now_label.set_size_request(52, 20)
         self.now_label.set_xalign(1)
+        self.now_label.set_no_show_all(True)
         self.now_label.get_style_context().add_class("clockenstein-now-label")
         self.gutter.put(self.now_label, 0, 0)
 
@@ -116,12 +118,10 @@ class WeekView(Gtk.Box):
         self.right_now_label = Gtk.Label()
         self.right_now_label.set_size_request(52, 20)
         self.right_now_label.set_xalign(0)
+        self.right_now_label.set_no_show_all(True)
         self.right_now_label.get_style_context().add_class("clockenstein-now-label")
         self.right_gutter.put(self.right_now_label, 0, 0)
 
-        self.connect("map", lambda _w: GLib.idle_add(
-            scroll.get_vadjustment().set_value, 7 * HOUR_HEIGHT
-        ))
         GLib.timeout_add_seconds(30, self._update_now_line)
 
     def update(self, current_date: datetime.date, events: list[dict], selected_date=None):
@@ -189,6 +189,9 @@ class WeekView(Gtk.Box):
             )
 
         self.show_all()
+        scroll_minute = _initial_scroll_minute(events, week, self._shows_today)
+        GLib.idle_add(self.timeline_scroll.get_vadjustment().set_value,
+                      _minute_to_y(scroll_minute))
         self._update_now_line()
 
     def _update_now_line(self):

@@ -68,6 +68,7 @@ class DayView(Gtk.Box):
         self.all_day_overlay.add_overlay(self.all_day_event_layer)
 
         scroll = Gtk.ScrolledWindow()
+        self.timeline_scroll = scroll
         scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         self.pack_start(scroll, True, True, 0)
 
@@ -89,6 +90,7 @@ class DayView(Gtk.Box):
         self.now_label = Gtk.Label()
         self.now_label.set_size_request(52, 20)
         self.now_label.set_xalign(1)
+        self.now_label.set_no_show_all(True)
         self.now_label.get_style_context().add_class("clockenstein-now-label")
         self.gutter.put(self.now_label, 0, 0)
 
@@ -111,9 +113,6 @@ class DayView(Gtk.Box):
         self.event_layer.connect("size-allocate", self._position_event_widgets)
         self.overlay.add_overlay(self.event_layer)
 
-        self.connect("map", lambda _w: GLib.idle_add(
-            scroll.get_vadjustment().set_value, 7 * HOUR_HEIGHT
-        ))
         GLib.timeout_add_seconds(30, self._update_now_line)
 
     def update(self, current_date: datetime.date, events: list[dict]):
@@ -182,6 +181,11 @@ class DayView(Gtk.Box):
         self.background.set_size_request(timeline_width, DAY_HEIGHT)
 
         self.show_all()
+        scroll_minute = _initial_scroll_minute(
+            day_events, (current_date,), current_date == datetime.date.today()
+        )
+        GLib.idle_add(self.timeline_scroll.get_vadjustment().set_value,
+                      _minute_to_y(scroll_minute))
         self._position_event_widgets(self.event_layer, self.event_layer.get_allocation())
         self._update_now_line()
 
@@ -274,6 +278,21 @@ def _timed_segment_minutes(event, day):
     end = (_time_minutes(event["time_end"])
            if day == event.get("date_end", event["date_start"]) else DAY_END_MINUTE)
     return start, end
+
+
+def _initial_scroll_minute(events, days, include_now):
+    relevant = []
+    for event in events:
+        if event.get("all_day") or event.get("time_start") is None:
+            continue
+        for day in days:
+            if event["date_start"] <= day <= event.get("date_end", event["date_start"]):
+                start, _end = _timed_segment_minutes(event, day)
+                relevant.append(start)
+    if include_now:
+        now = datetime.datetime.now()
+        relevant.append(now.hour * 60 + now.minute)
+    return max(0, min(relevant) - 60) if relevant else 8 * 60
 
 
 def _event_label_parts(event, start_minutes, end_minutes, all_day):
