@@ -51,6 +51,7 @@
 .clockenstein-week-day-header { font-weight: bold; font-size: 0.85em; }
 .clockenstein-selected-week-day { background-color: alpha(@theme_selected_bg_color, 0.13); }
 .clockenstein-today-header { color: @theme_selected_bg_color; }
+.clockenstein-day-date { font-size: 1.4em; font-weight: bold; }
 .clockenstein-time-label { font-size: 0.78em; color: @insensitive_fg_color; padding-right: 6px; }
 .clockenstein-now-label { font-size: 0.78em; color: #e01b24; padding-right: 6px; }
 

@@ -8,6 +8,7 @@ from xapp.util import l10n
 
 _ = l10n("clockenstein")
 
+from formatting import capitalize_first
 from views.colors import apply_tinted_event_color
 from views.month_view import _event_has_ended
 
@@ -33,6 +34,39 @@ class DayView(Gtk.Box):
         self._build()
 
     def _build(self):
+        self.date_label = Gtk.Label()
+        self.date_label.set_xalign(0)
+        self.date_label.set_margin_start(60)
+        self.date_label.set_margin_end(12)
+        self.date_label.set_margin_top(8)
+        self.date_label.set_margin_bottom(8)
+        self.date_label.get_style_context().add_class("clockenstein-day-date")
+        self.pack_start(self.date_label, False, False, 0)
+
+        all_day_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        self.pack_start(all_day_row, False, False, 0)
+        all_day_label = Gtk.Label(label=_("All day"))
+        all_day_label.set_size_request(52, ALL_DAY_HEIGHT)
+        all_day_label.set_xalign(1)
+        all_day_label.get_style_context().add_class("clockenstein-time-label")
+        all_day_row.pack_start(all_day_label, False, False, 0)
+        self.all_day_overlay = Gtk.Overlay()
+        self.all_day_overlay.set_hexpand(True)
+        self.all_day_overlay.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        self.all_day_overlay.connect("button-press-event", self._on_background_click)
+        all_day_row.pack_start(self.all_day_overlay, True, True, 0)
+        all_day_background = Gtk.DrawingArea()
+        all_day_background.set_size_request(-1, ALL_DAY_HEIGHT)
+        all_day_background.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        all_day_background.connect("draw", self._draw_all_day_background)
+        all_day_background.connect("button-press-event", self._on_background_click)
+        self.all_day_overlay.add(all_day_background)
+        self.all_day_event_layer = Gtk.Fixed()
+        self.all_day_event_layer.set_hexpand(True)
+        self.all_day_event_layer.set_size_request(-1, ALL_DAY_HEIGHT)
+        self.all_day_event_layer.connect("size-allocate", self._position_event_widgets)
+        self.all_day_overlay.add_overlay(self.all_day_event_layer)
+
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         self.pack_start(scroll, True, True, 0)
@@ -41,13 +75,8 @@ class DayView(Gtk.Box):
         scroll.add(body)
 
         self.gutter = Gtk.Fixed()
-        self.gutter.set_size_request(52, TIMELINE_HEIGHT)
+        self.gutter.set_size_request(52, DAY_HEIGHT)
         body.pack_start(self.gutter, False, False, 0)
-        all_day_label = Gtk.Label(label=_("All day"))
-        all_day_label.set_size_request(52, 20)
-        all_day_label.set_xalign(1)
-        all_day_label.get_style_context().add_class("clockenstein-time-label")
-        self.gutter.put(all_day_label, 0, (ALL_DAY_HEIGHT - 20) // 2)
         for h in range(24):
             lbl = Gtk.Label(label=f"{h:02d}:00")
             lbl.set_size_request(52, 20)
@@ -56,7 +85,7 @@ class DayView(Gtk.Box):
             lbl.get_style_context().add_class("clockenstein-time-label")
             # Centre the label on the same coordinate used by the grid line and
             # by events starting exactly on the hour.
-            self.gutter.put(lbl, 0, _timeline_y(h * 60) - 10)
+            self.gutter.put(lbl, 0, _minute_to_y(h * 60) - 10)
         self.now_label = Gtk.Label()
         self.now_label.set_size_request(52, 20)
         self.now_label.set_xalign(1)
@@ -70,7 +99,7 @@ class DayView(Gtk.Box):
         body.pack_start(self.overlay, True, True, 0)
 
         self.background = Gtk.DrawingArea()
-        self.background.set_size_request(-1, TIMELINE_HEIGHT)
+        self.background.set_size_request(-1, DAY_HEIGHT)
         self.background.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
         self.background.connect("draw", self._draw_background)
         self.background.connect("button-press-event", self._on_background_click)
@@ -78,22 +107,24 @@ class DayView(Gtk.Box):
 
         self.event_layer = Gtk.Fixed()
         self.event_layer.set_hexpand(True)
-        self.event_layer.set_size_request(-1, TIMELINE_HEIGHT)
+        self.event_layer.set_size_request(-1, DAY_HEIGHT)
         self.event_layer.connect("size-allocate", self._position_event_widgets)
         self.overlay.add_overlay(self.event_layer)
 
         self.connect("map", lambda _w: GLib.idle_add(
-            scroll.get_vadjustment().set_value, ALL_DAY_HEIGHT + 7 * HOUR_HEIGHT
+            scroll.get_vadjustment().set_value, 7 * HOUR_HEIGHT
         ))
         GLib.timeout_add_seconds(30, self._update_now_line)
 
     def update(self, current_date: datetime.date, events: list[dict]):
         self.current_date = current_date
+        self.date_label.set_text(capitalize_first(current_date.strftime("%A %-d %B %Y")))
         day_events = [e for e in events
                       if e["date_start"] <= current_date <= e.get("date_end", e["date_start"])]
 
-        for child in self.event_layer.get_children():
-            self.event_layer.remove(child)
+        for layer in (self.all_day_event_layer, self.event_layer):
+            for child in layer.get_children():
+                layer.remove(child)
         self._positioned_events = []
         for ev in day_events:
             full_day_column = ev["all_day"] or ev["time_start"] is None
@@ -132,21 +163,23 @@ class DayView(Gtk.Box):
                     text.set_text(value)
                 content.pack_start(text, False, False, 0)
             btn.add(content)
-            top = ALL_DAY_EVENT_MARGIN if full_day_column else _timeline_y(start_minutes)
+            top = ALL_DAY_EVENT_MARGIN if full_day_column else _minute_to_y(start_minutes)
             height = (ALL_DAY_HEIGHT - 2 * ALL_DAY_EVENT_MARGIN if full_day_column else
                       max(1, _minute_to_y(end_minutes) - _minute_to_y(start_minutes)))
-            self.event_layer.put(btn, 0, top)
+            layer = self.all_day_event_layer if full_day_column else self.event_layer
+            layer.put(btn, 0, top)
             self._positioned_events.append({
                 "widget": btn, "start": start_minutes, "end": end_minutes,
-                "top": top, "height": height, "all_day": full_day_column,
+                "top": top, "height": height, "all_day": full_day_column, "layer": layer,
             })
 
         _assign_event_columns([item for item in self._positioned_events if item["all_day"]])
         _assign_event_columns([item for item in self._positioned_events if not item["all_day"]])
         columns = max((item["columns"] for item in self._positioned_events), default=1)
         timeline_width = 8 + columns * (EVENT_WIDTH + EVENT_COLUMN_GAP)
-        self.event_layer.set_size_request(timeline_width, TIMELINE_HEIGHT)
-        self.background.set_size_request(timeline_width, TIMELINE_HEIGHT)
+        self.all_day_event_layer.set_size_request(timeline_width, ALL_DAY_HEIGHT)
+        self.event_layer.set_size_request(timeline_width, DAY_HEIGHT)
+        self.background.set_size_request(timeline_width, DAY_HEIGHT)
 
         self.show_all()
         self._position_event_widgets(self.event_layer, self.event_layer.get_allocation())
@@ -159,9 +192,20 @@ class DayView(Gtk.Box):
         return False
 
     def _draw_background(self, widget, cr):
+        cr.save()
+        cr.translate(0, -ALL_DAY_HEIGHT)
         _draw_day_grid(widget, cr)
         if self.current_date == datetime.date.today():
             _draw_now_line(widget, cr)
+        cr.restore()
+        return False
+
+    def _draw_all_day_background(self, widget, cr):
+        cr.set_source_rgba(0.35, 0.35, 0.35, 0.75)
+        cr.set_line_width(2)
+        cr.move_to(0, ALL_DAY_HEIGHT - 1)
+        cr.line_to(widget.get_allocated_width(), ALL_DAY_HEIGHT - 1)
+        cr.stroke()
         return False
 
     def _update_now_line(self):
@@ -171,7 +215,7 @@ class DayView(Gtk.Box):
             now = datetime.datetime.now()
             minutes = now.hour * 60 + now.minute
             self.now_label.set_text(now.strftime("%H:%M"))
-            self.gutter.move(self.now_label, 0, _timeline_y(minutes) - 10)
+            self.gutter.move(self.now_label, 0, _minute_to_y(minutes) - 10)
         self.background.queue_draw()
         return True
 
@@ -179,7 +223,7 @@ class DayView(Gtk.Box):
         for item in self._positioned_events:
             x = 4 + item["column"] * (EVENT_WIDTH + EVENT_COLUMN_GAP)
             item["widget"].set_timeline_height(item["height"])
-            self.event_layer.move(item["widget"], x, item["top"])
+            item["layer"].move(item["widget"], x, item["top"])
 
 
 class _DayEventButton(Gtk.Button):
