@@ -37,11 +37,11 @@ class MainWindow(Gtk.Window):
         geometry.min_width = 640
         geometry.min_height = 460
         self.set_geometry_hints(None, geometry, Gdk.WindowHints.MIN_SIZE)
-        self.connect("configure-event", self._on_configure)
         self._refresh(refresh_remote=self.store.has_remote_accounts)
 
     def _build_ui(self):
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        vbox.connect("size-allocate", self._on_content_size_allocate)
         self.add(vbox)
         header = Gtk.HeaderBar()
         header.set_show_close_button(True)
@@ -522,11 +522,11 @@ class MainWindow(Gtk.Window):
         self.stack.set_visible_child_name(name)
         self._refresh(refresh_remote=False)
 
-    def _on_configure(self, _widget, event):
-        if not (self.get_window().get_state() & Gdk.WindowState.MAXIMIZED):
-            self.settings.set_int("window-width", event.width)
-            self.settings.set_int("window-height", event.height)
-        return False
+    def _on_content_size_allocate(self, _widget, allocation):
+        window = self.get_window()
+        if window and not (window.get_state() & Gdk.WindowState.MAXIMIZED):
+            self.settings.set_int("window-width", allocation.width)
+            self.settings.set_int("window-height", allocation.height)
 
     def _on_event_activated(self, event):
         dialog = EventDialog(self, store=self.store, event=event)
