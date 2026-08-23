@@ -48,44 +48,6 @@ class MainWindow(Gtk.Window):
         header.set_title(_("Calendar"))
         self.set_titlebar(header)
 
-        nav = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
-        nav.get_style_context().add_class("linked")
-        for icon, callback in (("go-previous-symbolic", lambda _: self._navigate(-1)),
-                               (None, lambda _: self._go_today()),
-                               ("go-next-symbolic", lambda _: self._navigate(1))):
-            button = (Gtk.Button.new_from_icon_name(icon, Gtk.IconSize.BUTTON)
-                      if icon else Gtk.Button(label=_("Today")))
-            button.connect("clicked", callback)
-            nav.pack_start(button, False, False, 0)
-        header.pack_start(nav)
-
-        self.date_label = Gtk.Label()
-        self.date_label.get_style_context().add_class("clockenstein-date-label")
-        header.set_custom_title(self.date_label)
-
-        view_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
-        view_box.get_style_context().add_class("linked")
-        self.view_buttons = {}
-        for name, label in (("Month", _("Month")), ("Week", _("Week")), ("Day", _("Day"))):
-            button = Gtk.ToggleButton(label=label)
-            button.connect("toggled", self._on_view_toggle, name)
-            view_box.pack_start(button, False, False, 0)
-            self.view_buttons[name] = button
-        header.pack_end(view_box)
-
-        new_button = Gtk.Button.new_from_icon_name("list-add-symbolic", Gtk.IconSize.BUTTON)
-        new_button.set_tooltip_text(_("New event (Ctrl+N)"))
-        new_button.connect("clicked", lambda _: self._new_event())
-        header.pack_end(new_button)
-        self.refresh_button = Gtk.Button.new_from_icon_name("view-refresh-symbolic", Gtk.IconSize.BUTTON)
-        self.refresh_button.set_tooltip_text(_("Refresh online calendars"))
-        self.refresh_button.connect("clicked", lambda _: self._refresh(refresh_remote=True))
-        header.pack_end(self.refresh_button)
-        self.spinner = Gtk.Spinner()
-        self.spinner.set_no_show_all(True)
-        self.spinner.hide()
-        header.pack_end(self.spinner)
-
         menu = Gtk.Menu()
         calendars_item = Gtk.MenuItem(label=_("Calendars…"))
         calendars_item.connect("activate", self._manage_calendars)
@@ -99,7 +61,43 @@ class MainWindow(Gtk.Window):
         menu_button.set_image(Gtk.Image.new_from_icon_name("open-menu-symbolic", Gtk.IconSize.BUTTON))
         menu_button.set_tooltip_text(_("Main menu"))
         menu_button.set_popup(menu)
-        header.pack_end(menu_button)
+        header.pack_start(menu_button)
+
+        nav = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        nav.get_style_context().add_class("linked")
+        for icon, callback in (("go-previous-symbolic", lambda _: self._navigate(-1)),
+                               (None, lambda _: self._go_today()),
+                               ("go-next-symbolic", lambda _: self._navigate(1))):
+            button = (Gtk.Button.new_from_icon_name(icon, Gtk.IconSize.BUTTON)
+                      if icon else Gtk.Button(label=_("Today")))
+            button.connect("clicked", callback)
+            nav.pack_start(button, False, False, 0)
+        header.pack_start(nav)
+
+        view_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        view_box.set_homogeneous(False)
+        view_box.get_style_context().add_class("linked")
+        view_box.get_style_context().add_class("path-bar")
+        self.view_buttons = {}
+        for name, label in (("Month", _("Month")), ("Week", _("Week")), ("Day", _("Day"))):
+            button = Gtk.ToggleButton(label=label)
+            button.connect("toggled", self._on_view_toggle, name)
+            view_box.pack_start(button, False, False, 0)
+            self.view_buttons[name] = button
+        header.set_custom_title(view_box)
+
+        self.refresh_button = Gtk.Button.new_from_icon_name("view-refresh-symbolic", Gtk.IconSize.BUTTON)
+        self.refresh_button.set_tooltip_text(_("Refresh online calendars"))
+        self.refresh_button.connect("clicked", lambda _: self._refresh(refresh_remote=True))
+        header.pack_end(self.refresh_button)
+        new_button = Gtk.Button.new_from_icon_name("list-add-symbolic", Gtk.IconSize.BUTTON)
+        new_button.set_tooltip_text(_("New event (Ctrl+N)"))
+        new_button.connect("clicked", lambda _: self._new_event())
+        header.pack_end(new_button)
+        self.spinner = Gtk.Spinner()
+        self.spinner.set_no_show_all(True)
+        self.spinner.hide()
+        header.pack_end(self.spinner)
 
         body = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         vbox.pack_start(body, True, True, 0)
@@ -599,30 +597,12 @@ class MainWindow(Gtk.Window):
             self.spinner.hide()
 
     def _update_views(self):
-        self._update_date_label()
         start, end = self._date_range()
         events = self.store.get_events(start, end)
         self.month_view.update(self.current_date, events)
         self.week_view.update(self.current_date, events)
         self.day_view.update(self.current_date, events)
         self.mini_cal.set_events(self.store.get_events())
-
-    def _update_date_label(self):
-        d = self.current_date
-        if self._active_view == "Month":
-            text = _capitalize_first(d.strftime("%B %Y"))
-        elif self._active_view == "Week":
-            monday = d - datetime.timedelta(days=d.weekday())
-            sunday = monday + datetime.timedelta(days=6)
-            text = (f"{monday.strftime('%b %-d')}–{sunday.strftime('%-d, %Y')}" if monday.month == sunday.month
-                    else f"{monday.strftime('%b %-d')} – {sunday.strftime('%b %-d, %Y')}")
-        else:
-            text = d.strftime("%A, %B %-d, %Y")
-        self.date_label.set_text(text)
-
-
-def _capitalize_first(text):
-    return text[:1].upper() + text[1:]
 
 
 def _month_days(year, month):
