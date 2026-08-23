@@ -8,6 +8,7 @@ calendar_dir = join_paths(clockenstein_dir, 'calendar')
 
 install_data(
   'calendar/main.py',
+  'calendar/formatting.py',
   'calendar/store.py',
   'calendar/event_dialog.py',
   'calendar/style.css',

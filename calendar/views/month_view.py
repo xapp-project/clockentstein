@@ -8,6 +8,7 @@ from xapp.util import l10n
 
 _ = l10n("clockenstein")
 
+from formatting import format_time
 from views.colors import apply_tinted_event_color
 
 EVENT_HEIGHT = 22
@@ -249,30 +250,15 @@ def _draw_event_dot(widget, cr, color):
 
 def _event_tooltip(event):
     title = GLib.markup_escape_text(event.get("summary") or _("Untitled"))
-    start_date = event["date_start"]
-    end_date = event.get("date_end", start_date)
-    if event.get("all_day"):
-        when = start_date.strftime("%d %b %Y")
-        if end_date != start_date:
-            when += " – " + end_date.strftime("%d %b %Y")
-        when += " " + _("(all day)")
-    else:
-        start = start_date.strftime("%d %b %Y")
-        if event.get("time_start"):
-            start += " " + event["time_start"].strftime("%H:%M")
-        end = end_date.strftime("%d %b %Y")
-        if event.get("time_end"):
-            end += " " + event["time_end"].strftime("%H:%M")
-        when = f"{start} – {end}"
-    properties = [f"🕒\ufe0e  {when}"]
-    if event.get("calendar_name"):
-        properties.append(f"📅\ufe0e  {event['calendar_name']}")
-    if event.get("provider") != "local" and event.get("account_id"):
-        properties.append(f"👤\ufe0e  {event.get('account_name', event['account_id'])}")
+    properties = []
+    if event.get("time_start") and not event.get("all_day"):
+        properties.append(format_time(event["time_start"]))
     if event.get("location"):
-        properties.append(f"📍\ufe0e  {event['location']}")
+        properties.append(str(event["location"]))
+    if not properties:
+        return f"<b>{title}</b>"
     details = GLib.markup_escape_text("\n".join(properties))
-    return f"<b>{title}</b>\n\n{details}"
+    return f"<b>{title}</b>\n{details}"
 
 
 def _event_has_ended(event):
