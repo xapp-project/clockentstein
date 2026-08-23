@@ -201,7 +201,7 @@ class _DayCell(Gtk.EventBox):
 
 
 class _SpanPill(Gtk.EventBox):
-    def __init__(self, event, on_event, _show_start_time):
+    def __init__(self, event, on_event, show_accent):
         super().__init__()
         single_timed = (not event.get("all_day") and
                         event.get("date_end", event["date_start"]) == event["date_start"])
@@ -210,7 +210,7 @@ class _SpanPill(Gtk.EventBox):
         if single_timed:
             self.get_style_context().add_class("clockenstein-event-dot-row")
         else:
-            apply_tinted_event_color(self, event)
+            apply_tinted_event_color(self, event, show_accent)
         if _event_has_ended(event):
             self.set_opacity(0.5)
         self.connect("button-press-event", lambda _widget, _click: on_event(event))
@@ -233,7 +233,7 @@ class _SpanPill(Gtk.EventBox):
         summary = event.get("summary") or _("Untitled")
         escaped_summary = GLib.markup_escape_text(summary)
         label.set_markup(f"<b>{escaped_summary}</b>")
-        label.set_margin_start(0 if single_timed else 9)
+        label.set_margin_start(0 if single_timed else (9 if show_accent else 4))
         label.set_margin_end(4)
         content.pack_start(label, True, True, 0)
         self.add(content)
