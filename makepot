@@ -1,0 +1,13 @@
+#!/bin/bash
+
+xgettext --language=Desktop \
+    --output=clockenstein.pot \
+    data/org.x.clockenstein.Calendar.desktop.in
+
+xgettext --language=Python \
+    --join-existing \
+    --from-code=UTF-8 \
+    --keyword=_ \
+    --keyword=N_ \
+    --output=clockenstein.pot \
+    calendar/*.py calendar/backends/*.py calendar/views/*.py

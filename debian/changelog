@@ -1,0 +1,5 @@
+clockenstein (0.1.0) unstable; urgency=medium
+
+  * Initial Debian package.
+
+ -- Clement Lefebvre <root@linuxmint.com>  Sat, 22 Aug 2026 12:00:00 +0200

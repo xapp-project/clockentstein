@@ -1,0 +1,89 @@
+/* Clockenstein — style.css */
+
+.clockenstein-dow-header {
+    border-bottom: 1px solid @borders;
+    padding: 4px 0;
+}
+.clockenstein-dow-label {
+    font-weight: bold;
+    font-size: 0.95em;
+    color: @insensitive_fg_color;
+}
+
+/* Month cells */
+.clockenstein-day-cell {
+    border-right: 1px solid @borders;
+    border-bottom: 1px solid @borders;
+    min-height: 60px;
+}
+.clockenstein-day-number {
+    font-size: 0.95em;
+    font-weight: bold;
+    padding: 2px 4px;
+}
+.clockenstein-today { background-color: alpha(@theme_selected_bg_color, 0.07); }
+.clockenstein-today .clockenstein-day-number { color: @theme_selected_bg_color; }
+.clockenstein-other-month { background-color: alpha(@insensitive_bg_color, 0.4); }
+.clockenstein-other-month .clockenstein-day-number { color: @insensitive_fg_color; font-weight: normal; }
+
+/* Event pills */
+.clockenstein-event-pill {
+    background-color: alpha(@theme_selected_bg_color, 0.75);
+    border-radius: 3px;
+    color: @theme_selected_fg_color;
+    font-size: 0.8em;
+    margin-bottom: 1px;
+}
+.clockenstein-event-pill-hover { background-color: @theme_selected_bg_color; }
+.clockenstein-event-span {
+    border-radius: 3px;
+    font-size: 0.9em;
+}
+.clockenstein-event-dot-row {
+    background-color: transparent;
+    color: @theme_fg_color;
+}
+.clockenstein-more-label { font-size: 0.75em; color: @insensitive_fg_color; padding-left: 4px; }
+
+/* Week/Day */
+.clockenstein-week-header { border-bottom: 1px solid @borders; padding: 4px 0; }
+.clockenstein-week-day-header { font-weight: bold; font-size: 0.85em; }
+.clockenstein-today-header { color: @theme_selected_bg_color; }
+.clockenstein-time-label { font-size: 0.78em; color: @insensitive_fg_color; padding-right: 6px; }
+.clockenstein-now-label { font-size: 0.78em; color: #e01b24; padding-right: 6px; }
+
+.clockenstein-week-event {
+    background-color: @theme_selected_bg_color;
+    color: @theme_selected_fg_color;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.82em;
+    padding: 2px 6px;
+}
+.clockenstein-week-event:hover { background-color: shade(@theme_selected_bg_color, 1.15); }
+.clockenstein-day-event {
+    font-size: 1em;
+    padding: 8px 10px;
+}
+.clockenstein-week-timeline-event { font-size: 1em; }
+
+/* Misc */
+.clockenstein-date-label { font-weight: bold; font-size: 1.05em; }
+.clockenstein-sync-btn { font-size: 0.85em; }
+.clockenstein-section-label {
+    font-weight: bold;
+    font-size: 0.78em;
+    color: @insensitive_fg_color;
+    margin-top: 6px;
+}
+.clockenstein-calendar-subsection {
+    font-size: 0.72em;
+    color: @insensitive_fg_color;
+    margin-top: 4px;
+    margin-left: 6px;
+}
+.clockenstein-status {
+    font-size: 0.78em;
+    color: @insensitive_fg_color;
+    padding-top: 4px;
+}

@@ -1,0 +1,385 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-23 14:02+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: data/org.x.clockenstein.Calendar.desktop.in:3 calendar/event_dialog.py:129
+#: calendar/main_window.py:21 calendar/main_window.py:47 calendar/store.py:76
+#: calendar/store.py:94 calendar/backends/caldav.py:80
+#: calendar/backends/caldav.py:118 calendar/backends/caldav.py:262
+#: calendar/backends/caldav.py:264
+msgid "Calendar"
+msgstr ""
+
+#: data/org.x.clockenstein.Calendar.desktop.in:4
+msgid "Manage your events and appointments"
+msgstr ""
+
+#: data/org.x.clockenstein.Calendar.desktop.in:10
+msgid "calendar;event;appointment;Google;CalDAV;Nextcloud;"
+msgstr ""
+
+#: calendar/event_dialog.py:74
+msgid "New Event"
+msgstr ""
+
+#: calendar/event_dialog.py:74
+msgid "Event Details"
+msgstr ""
+
+#: calendar/event_dialog.py:87 calendar/main_window.py:314
+#: calendar/main_window.py:372 calendar/main_window.py:415
+msgid "Cancel"
+msgstr ""
+
+#: calendar/event_dialog.py:87
+msgid "Close"
+msgstr ""
+
+#: calendar/event_dialog.py:89
+msgid "Delete"
+msgstr ""
+
+#: calendar/event_dialog.py:93 calendar/main_window.py:314
+msgid "Save"
+msgstr ""
+
+#: calendar/event_dialog.py:123
+msgid "Title"
+msgstr ""
+
+#: calendar/event_dialog.py:133 calendar/main_window.py:156
+#: calendar/main_window.py:295
+msgid "Local"
+msgstr ""
+
+#: calendar/event_dialog.py:151 calendar/views/day_view.py:44
+#: calendar/views/day_view.py:223 calendar/views/week_view.py:62
+#: calendar/views/week_view.py:89
+msgid "All day"
+msgstr ""
+
+#: calendar/event_dialog.py:157
+msgid "Start"
+msgstr ""
+
+#: calendar/event_dialog.py:165
+msgid "End"
+msgstr ""
+
+#: calendar/event_dialog.py:180
+msgid "Location"
+msgstr ""
+
+#: calendar/event_dialog.py:183
+msgid "Optional"
+msgstr ""
+
+#: calendar/event_dialog.py:186
+msgid "Notes"
+msgstr ""
+
+#: calendar/event_dialog.py:280 calendar/event_dialog.py:327
+#: calendar/backends/google.py:320 calendar/views/day_view.py:222
+#: calendar/views/month_view.py:232 calendar/views/month_view.py:251
+#: calendar/views/week_view.py:230
+msgid "Untitled"
+msgstr ""
+
+#: calendar/event_dialog.py:317 calendar/event_dialog.py:338
+#, python-format
+msgid "Error: %s"
+msgstr ""
+
+#: calendar/event_dialog.py:327
+#, python-format
+msgid "Delete '%s'?"
+msgstr ""
+
+#: calendar/event_dialog.py:329
+msgid "This event will be permanently deleted."
+msgstr ""
+
+#: calendar/main_window.py:56
+msgid "Today"
+msgstr ""
+
+#: calendar/main_window.py:68
+msgid "Month"
+msgstr ""
+
+#: calendar/main_window.py:68
+msgid "Week"
+msgstr ""
+
+#: calendar/main_window.py:68
+msgid "Day"
+msgstr ""
+
+#: calendar/main_window.py:76
+msgid "New event (Ctrl+N)"
+msgstr ""
+
+#: calendar/main_window.py:80
+msgid "Refresh online calendars"
+msgstr ""
+
+#: calendar/main_window.py:123
+msgid "Calendars…"
+msgstr ""
+
+#: calendar/main_window.py:148 calendar/main_window.py:577
+msgid "Some online calendars are disconnected (read-only)."
+msgstr ""
+
+#: calendar/main_window.py:169
+msgid "Online"
+msgstr ""
+
+#: calendar/main_window.py:169
+msgid "Offline, read only"
+msgstr ""
+
+#: calendar/main_window.py:185
+#, python-format
+msgid "Disconnect %s"
+msgstr ""
+
+#: calendar/main_window.py:194
+msgid "My Calendars"
+msgstr ""
+
+#: calendar/main_window.py:194
+msgid "Other Calendars"
+msgstr ""
+
+#: calendar/main_window.py:206
+msgid "Show this calendar"
+msgstr ""
+
+#: calendar/main_window.py:212
+msgid "Edit"
+msgstr ""
+
+#: calendar/main_window.py:218 calendar/main_window.py:351
+msgid "Remove"
+msgstr ""
+
+#: calendar/main_window.py:260
+msgid "Calendars"
+msgstr ""
+
+#: calendar/main_window.py:261
+msgid "Add a New Calendar…"
+msgstr ""
+
+#: calendar/main_window.py:297
+msgid "CalDAV (Nextcloud, Memotoo, etc.)"
+msgstr ""
+
+#: calendar/main_window.py:313
+msgid "Edit Calendar"
+msgstr ""
+
+#: calendar/main_window.py:324 calendar/main_window.py:381
+msgid "Name"
+msgstr ""
+
+#: calendar/main_window.py:326 calendar/main_window.py:383
+msgid "Color"
+msgstr ""
+
+#: calendar/main_window.py:342 calendar/store.py:101
+msgid "At least one local calendar is required"
+msgstr ""
+
+#: calendar/main_window.py:349
+#, python-format
+msgid "Remove %s?"
+msgstr ""
+
+#: calendar/main_window.py:352
+msgid "All the events from this calendar will be permanently removed."
+msgstr ""
+
+#: calendar/main_window.py:371
+msgid "New Calendar"
+msgstr ""
+
+#: calendar/main_window.py:372
+msgid "Create"
+msgstr ""
+
+#: calendar/main_window.py:394 calendar/main_window.py:434
+msgid "Connecting…"
+msgstr ""
+
+#: calendar/main_window.py:402 calendar/main_window.py:442
+msgid "Downloading events…"
+msgstr ""
+
+#: calendar/main_window.py:415
+msgid "Connect"
+msgstr ""
+
+#: calendar/main_window.py:424
+msgid "Server URL"
+msgstr ""
+
+#: calendar/main_window.py:424
+msgid "Username"
+msgstr ""
+
+#: calendar/main_window.py:424
+msgid "Password"
+msgstr ""
+
+#: calendar/main_window.py:451
+#, python-format
+msgid "Disconnect %s?"
+msgstr ""
+
+#: calendar/main_window.py:454
+msgid ""
+"This online calendar will be disconnected and removed from the application."
+msgstr ""
+
+#: calendar/main_window.py:561
+msgid "Connecting to online calendars…"
+msgstr ""
+
+#: calendar/store.py:36 calendar/store.py:50
+msgid "Personal"
+msgstr ""
+
+#: calendar/store.py:93 calendar/store.py:105
+#, python-format
+msgid "Unknown calendar %s"
+msgstr ""
+
+#: calendar/store.py:175
+#, python-format
+msgid "Unknown event %s"
+msgstr ""
+
+#: calendar/store.py:200
+#, python-format
+msgid "Could not read %s: %s"
+msgstr ""
+
+#: calendar/backends/caldav.py:44
+msgid "A username and password are required"
+msgstr ""
+
+#: calendar/backends/caldav.py:46
+msgid "Contacting CalDAV server…"
+msgstr ""
+
+#: calendar/backends/caldav.py:132
+msgid "Password not found in the keyring"
+msgstr ""
+
+#: calendar/backends/caldav.py:180
+msgid "The event has no CalDAV resource URL"
+msgstr ""
+
+#: calendar/backends/caldav.py:206
+msgid "This CalDAV account is offline. It is now read-only."
+msgstr ""
+
+#: calendar/backends/caldav.py:240
+#, python-format
+msgid "Calendar CalDAV password for %s"
+msgstr ""
+
+#: calendar/backends/caldav.py:242
+msgid "Could not save the password in the keyring"
+msgstr ""
+
+#: calendar/backends/caldav.py:274
+msgid "A server URL is required"
+msgstr ""
+
+#: calendar/backends/caldav.py:278
+msgid "CalDAV connections must use HTTPS"
+msgstr ""
+
+#: calendar/backends/google.py:49
+#, python-format
+msgid "OAuth credentials not found: %s"
+msgstr ""
+
+#: calendar/backends/google.py:52
+msgid "Waiting for Google authorization…"
+msgstr ""
+
+#: calendar/backends/google.py:57
+msgid "Authorization received • Contacting Google Calendar…"
+msgstr ""
+
+#: calendar/backends/google.py:60
+msgid "Loading your Google calendars…"
+msgstr ""
+
+#: calendar/backends/google.py:64
+msgid "Google did not return a primary calendar"
+msgstr ""
+
+#: calendar/backends/google.py:203
+msgid "This Google account is offline. Its cached events are read-only."
+msgstr ""
+
+#: calendar/backends/google.py:221
+msgid "authorization expired"
+msgstr ""
+
+#: calendar/views/month_view.py:43
+msgid "MON"
+msgstr ""
+
+#: calendar/views/month_view.py:43
+msgid "TUE"
+msgstr ""
+
+#: calendar/views/month_view.py:43
+msgid "WED"
+msgstr ""
+
+#: calendar/views/month_view.py:43
+msgid "THU"
+msgstr ""
+
+#: calendar/views/month_view.py:43
+msgid "FRI"
+msgstr ""
+
+#: calendar/views/month_view.py:43
+msgid "SAT"
+msgstr ""
+
+#: calendar/views/month_view.py:43
+msgid "SUN"
+msgstr ""
+
+#: calendar/views/month_view.py:178
+#, python-format
+msgid "+%d more"
+msgstr ""
+
+#: calendar/views/month_view.py:258
+msgid "(all day)"
+msgstr ""

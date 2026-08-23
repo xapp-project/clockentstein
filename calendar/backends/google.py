@@ -1,0 +1,403 @@
+import datetime
+import hashlib
+import json
+import httplib2
+from pathlib import Path
+
+from google.oauth2.credentials import Credentials
+from google_auth_httplib2 import AuthorizedHttp
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from xapp.util import l10n
+
+_ = l10n("clockenstein")
+
+
+SCOPES = [
+    "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+]
+
+
+class GoogleUnavailable(RuntimeError):
+    pass
+
+
+class GoogleBackend:
+    def __init__(self, data_dir: Path):
+        self.data_dir = Path(data_dir)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.accounts_file = self.data_dir / "accounts.json"
+        self.accounts = self._read_json(self.accounts_file, [])
+        self._services = {}
+        self._credentials = {}
+        self._errors = {}
+        self._load_services()
+
+    @property
+    def has_accounts(self):
+        return bool(self.accounts)
+
+    def account_states(self):
+        return [{"id": a["id"], "name": a.get("name", a["id"]),
+                 "online": a["id"] in self._services,
+                 "error": self._errors.get(a["id"], "")} for a in self.accounts]
+
+    def connect(self, google_file: Path, progress=None) -> str:
+        google_file = Path(google_file)
+        if not google_file.exists():
+            raise GoogleUnavailable(_("OAuth credentials not found: %s") % google_file)
+        scopes = self._scopes_for_credentials(google_file)
+        if progress:
+            progress(_("Waiting for Google authorization…"))
+        flow = InstalledAppFlow.from_client_secrets_file(str(google_file), scopes)
+        creds = flow.run_local_server(port=0, authorization_prompt_message="Opening Google sign-in…",
+                                      prompt="select_account consent")
+        if progress:
+            progress(_("Authorization received • Contacting Google Calendar…"))
+        service = self._build_service(creds)
+        if progress:
+            progress(_("Loading your Google calendars…"))
+        calendars = self._fetch_calendars(service)
+        primary = next((c for c in calendars if c.get("primary")), None)
+        if not primary:
+            raise GoogleUnavailable(_("Google did not return a primary calendar"))
+        account_id = primary["id"]
+        token_name = hashlib.sha256(account_id.encode()).hexdigest()[:20] + ".json"
+        (self.data_dir / token_name).write_text(self._credentials_json(creds), encoding="utf-8")
+        account = next((a for a in self.accounts if a["id"] == account_id), None)
+        if account is None:
+            account = {"id": account_id, "name": account_id, "token": token_name,
+                       "calendars": [], "events": [], "scopes": scopes}
+            self.accounts.append(account)
+        account["token"] = token_name
+        account["scopes"] = scopes
+        account["calendars"] = self._merge_calendar_preferences(account.get("calendars", []), calendars)
+        self._services[account_id] = service
+        self._credentials[account_id] = creds
+        self._errors.pop(account_id, None)
+        self._save()
+        return account_id
+
+    def disconnect(self, account_id: str):
+        account = next((a for a in self.accounts if a["id"] == account_id), None)
+        if not account:
+            return
+        token = self.data_dir / account.get("token", "missing")
+        if token.exists():
+            token.unlink()
+        self.accounts.remove(account)
+        self._services.pop(account_id, None)
+        self._credentials.pop(account_id, None)
+        self._errors.pop(account_id, None)
+        self._save()
+
+    def list_calendars(self):
+        result = []
+        for account in self.accounts:
+            online = account["id"] in self._services
+            for cal in account.get("calendars", []):
+                result.append({"id": cal["id"], "name": cal.get("name", cal["id"]),
+                               "color": cal.get("color", "#4285f4"), "provider": "google",
+                               "account_id": account["id"], "account_name": account.get("name", account["id"]),
+                               "visible": cal.get("visible", True),
+                               "primary": cal.get("primary", cal["id"] == account["id"]),
+                               "writable": cal.get("access_role") in ("writer", "owner"),
+                               "available": online})
+        return result
+
+    def set_visible(self, calendar_id, visible, account_id=None):
+        for account in self.accounts:
+            if account_id and account["id"] != account_id:
+                continue
+            for cal in account.get("calendars", []):
+                if cal["id"] == calendar_id:
+                    cal["visible"] = bool(visible)
+                    self._save()
+                    return
+
+    def get_events(self, start=None, end=None):
+        calendars = {(a["id"], c["id"]): c for a in self.accounts
+                     for c in a.get("calendars", []) if c.get("visible", True)}
+        result = []
+        for account in self.accounts:
+            online = account["id"] in self._services
+            for raw in account.get("events", []):
+                cal = calendars.get((account["id"], raw.get("_calendar_id")))
+                if not cal or raw.get("status") == "cancelled":
+                    continue
+                event = google_event_to_dict(raw, cal, account, online)
+                if start and event["date_end"] < start:
+                    continue
+                if end and event["date_start"] > end:
+                    continue
+                result.append(event)
+        return result
+
+    def refresh(self, start: datetime.date, end: datetime.date):
+        """Refresh the requested range. Returns a list of account errors."""
+        errors = []
+        for account in self.accounts:
+            account_id = account["id"]
+            service = self._services.get(account_id)
+            if service is None and account_id in self._credentials:
+                try:
+                    service = self._build_service(self._credentials[account_id])
+                    self._services[account_id] = service
+                except Exception as exc:
+                    self._errors[account_id] = str(exc)
+            if not service:
+                errors.append(f"{account_id}: {self._errors.get(account_id, _('not connected'))}")
+                continue
+            try:
+                remote_cals = self._fetch_calendars(service)
+                account["calendars"] = self._merge_calendar_preferences(account.get("calendars", []), remote_cals)
+                retained = [e for e in account.get("events", [])
+                            if not _raw_overlaps(e, start, end)]
+                fetched = []
+                for cal in account["calendars"]:
+                    if not cal.get("visible", True):
+                        continue
+                    fetched.extend(self._fetch_events(service, cal["id"], start, end))
+                account["events"] = retained + fetched
+                creds = self._credentials.get(account_id)
+                if creds is not None:
+                    (self.data_dir / account["token"]).write_text(
+                        self._credentials_json(creds), encoding="utf-8"
+                    )
+                self._errors.pop(account_id, None)
+            except Exception as exc:
+                self._services.pop(account_id, None)
+                self._errors[account_id] = str(exc)
+                errors.append(f"{account_id}: {exc}")
+        self._save()
+        return errors
+
+    def create_event(self, data):
+        service = self._require_service(data["account_id"])
+        body = event_dict_to_google(data)
+        raw = service.events().insert(calendarId=data["calendar_id"], body=body).execute()
+        raw["_calendar_id"] = data["calendar_id"]
+        self._upsert_cached(data["account_id"], raw)
+        return raw
+
+    def update_event(self, uid, data):
+        service = self._require_service(data["account_id"])
+        raw = service.events().patch(calendarId=data["calendar_id"], eventId=uid,
+                                     body=event_dict_to_google(data, include_reminders=False)).execute()
+        raw["_calendar_id"] = data["calendar_id"]
+        self._upsert_cached(data["account_id"], raw)
+        return raw
+
+    def delete_event(self, uid, calendar_id=None, account_id=None):
+        self._require_service(account_id).events().delete(calendarId=calendar_id, eventId=uid).execute()
+        account = next(a for a in self.accounts if a["id"] == account_id)
+        account["events"] = [e for e in account.get("events", [])
+                             if not (e.get("id") == uid and e.get("_calendar_id") == calendar_id)]
+        self._save()
+        return True
+
+    def _require_service(self, account_id):
+        service = self._services.get(account_id)
+        if not service:
+            raise GoogleUnavailable(_("This Google account is offline. Its cached events are read-only."))
+        return service
+
+    def _upsert_cached(self, account_id, raw):
+        account = next(a for a in self.accounts if a["id"] == account_id)
+        account["events"] = [e for e in account.get("events", []) if not (
+            e.get("id") == raw.get("id") and e.get("_calendar_id") == raw.get("_calendar_id"))]
+        account["events"].append(raw)
+        self._save()
+
+    def _load_services(self):
+        for account in self.accounts:
+            try:
+                scopes = account.get("scopes", SCOPES)
+                creds = Credentials.from_authorized_user_file(str(self.data_dir / account["token"]), scopes)
+                # Older distro versions restore only the refresh token here.
+                # AuthorizedHttp refreshes lazily on the first API request.
+                if not creds.valid and not creds.refresh_token:
+                    raise GoogleUnavailable(_("authorization expired"))
+                self._credentials[account["id"]] = creds
+                self._errors.pop(account["id"], None)
+            except Exception as exc:
+                self._errors[account["id"]] = str(exc)
+
+    @staticmethod
+    def _fetch_calendars(service):
+        items, token = [], None
+        while True:
+            response = service.calendarList().list(pageToken=token).execute()
+            items.extend(response.get("items", []))
+            token = response.get("nextPageToken")
+            if not token:
+                return items
+
+    @staticmethod
+    def _build_service(creds):
+        """Build an API client whose network calls cannot hang the UI forever."""
+        http = AuthorizedHttp(creds, http=httplib2.Http(timeout=20))
+        return build("calendar", "v3", http=http, cache_discovery=False)
+
+    @staticmethod
+    def _fetch_events(service, calendar_id, start, end):
+        local_tz = datetime.datetime.now().astimezone().tzinfo
+        time_min = datetime.datetime.combine(start, datetime.time.min, local_tz).isoformat()
+        time_max = datetime.datetime.combine(end + datetime.timedelta(days=1), datetime.time.min, local_tz).isoformat()
+        items, token = [], None
+        while True:
+            response = service.events().list(calendarId=calendar_id, timeMin=time_min, timeMax=time_max,
+                                             singleEvents=True, showDeleted=True, pageToken=token).execute()
+            for event in response.get("items", []):
+                event["_calendar_id"] = calendar_id
+                items.append(event)
+            token = response.get("nextPageToken")
+            if not token:
+                return items
+
+    @staticmethod
+    def _merge_calendar_preferences(old, remote):
+        preferences = {c["id"]: c for c in old}
+        return [{"id": c["id"], "name": c.get("summary", c["id"]),
+                 "color": c.get("backgroundColor", "#4285f4"),
+                 "default_reminders": c.get("defaultReminders", []),
+                 "access_role": c.get("accessRole", "reader"),
+                 "primary": c.get("primary", False),
+                 "visible": preferences.get(c["id"], {}).get("visible", c.get("selected", True))}
+                for c in remote]
+
+    def _save(self):
+        temp = self.accounts_file.with_suffix(".tmp")
+        temp.write_text(json.dumps(self.accounts, indent=2), encoding="utf-8")
+        temp.replace(self.accounts_file)
+
+    @staticmethod
+    def _read_json(path, default):
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return default
+
+    @staticmethod
+    def _scopes_for_credentials(path):
+        """Read optional OAuth scopes declared by the bundled client configuration."""
+        config = GoogleBackend._read_json(path, {})
+        scopes = config.get("clockenstein_scopes", SCOPES)
+        return scopes if isinstance(scopes, list) and all(isinstance(s, str) for s in scopes) else SCOPES
+
+    @staticmethod
+    def _credentials_json(creds):
+        """Serialize credentials on both current and older distro google-auth."""
+        if hasattr(creds, "to_json"):
+            return creds.to_json()
+        expiry = getattr(creds, "expiry", None)
+        payload = {
+            "token": getattr(creds, "token", None),
+            "refresh_token": getattr(creds, "refresh_token", None),
+            "token_uri": getattr(creds, "token_uri", None),
+            "client_id": getattr(creds, "client_id", None),
+            "client_secret": getattr(creds, "client_secret", None),
+            "scopes": list(getattr(creds, "scopes", None) or []),
+        }
+        if expiry is not None:
+            payload["expiry"] = expiry.isoformat().replace("+00:00", "Z")
+        return json.dumps(payload)
+
+
+def google_event_to_dict(raw, calendar, account, online):
+    start, end = raw.get("start", {}), raw.get("end", {})
+    all_day = "date" in start
+    if all_day:
+        date_start = datetime.date.fromisoformat(start["date"])
+        date_end = datetime.date.fromisoformat(end.get("date", start["date"])) - datetime.timedelta(days=1)
+        time_start = time_end = None
+    else:
+        start_dt = _parse_datetime(start.get("dateTime"))
+        end_dt = _parse_datetime(end.get("dateTime", start.get("dateTime")))
+        date_start, date_end = start_dt.date(), end_dt.date()
+        time_start, time_end = start_dt.time().replace(tzinfo=None), end_dt.time().replace(tzinfo=None)
+    writable = calendar.get("access_role") in ("writer", "owner")
+    reminders = raw.get("reminders", {})
+    reminder_items = (calendar.get("default_reminders", [])
+                      if reminders.get("useDefault") else reminders.get("overrides", []))
+    notification_minutes = _google_notification_minutes(
+        reminder_items, date_start, time_start)
+    return {"uid": raw.get("id", ""), "summary": raw.get("summary") or _("Untitled"),
+            "location": raw.get("location", ""), "description": raw.get("description", ""),
+            "all_day": all_day, "date_start": date_start, "date_end": date_end,
+            "time_start": time_start, "time_end": time_end,
+            "notification_minutes": notification_minutes, "provider": "google",
+            "account_id": account["id"], "calendar_id": calendar["id"],
+            "calendar_name": calendar.get("name", calendar["id"]),
+            "calendar_color": calendar.get("color", "#4285f4"),
+            "editable": bool(online and writable), "cached": not online}
+
+
+def event_dict_to_google(data, include_reminders=True):
+    body = {"summary": data.get("summary", ""), "location": data.get("location", ""),
+            "description": data.get("description", "")}
+    if data.get("all_day", True):
+        body["start"] = {"date": data["date_start"].isoformat()}
+        body["end"] = {"date": (data.get("date_end", data["date_start"]) + datetime.timedelta(days=1)).isoformat()}
+    else:
+        tz = datetime.datetime.now().astimezone().tzinfo
+        start = datetime.datetime.combine(data["date_start"], data["time_start"], tz)
+        end = datetime.datetime.combine(data.get("date_end", data["date_start"]), data["time_end"], tz)
+        body["start"] = {"dateTime": start.isoformat()}
+        body["end"] = {"dateTime": end.isoformat()}
+    if include_reminders:
+        notification_minutes = data.get("notification_minutes")
+        body["reminders"] = {
+            "useDefault": False,
+            "overrides": ([] if notification_minutes is None else
+                          [{"method": "popup", "minutes": int(notification_minutes)}]),
+        }
+    return body
+
+
+def _google_notification_minutes(reminders, date_start, time_start, now=None):
+    local_tz = datetime.datetime.now().astimezone().tzinfo
+    event_start = datetime.datetime.combine(date_start, time_start or datetime.time.min, local_tz)
+    now = now or datetime.datetime.now(local_tz)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=local_tz)
+    candidates = []
+    for reminder in reminders or []:
+        if reminder.get("method") != "popup":
+            continue
+        try:
+            minutes = int(reminder["minutes"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        trigger_at = event_start - datetime.timedelta(minutes=minutes)
+        if trigger_at >= now:
+            candidates.append((trigger_at, minutes))
+    return min(candidates, default=(None, None), key=lambda item: item[0])[1]
+
+
+def _parse_datetime(value):
+    return datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _raw_start_date(raw):
+    start = raw.get("start", {})
+    if "date" in start:
+        return datetime.date.fromisoformat(start["date"])
+    if "dateTime" in start:
+        return _parse_datetime(start["dateTime"]).date()
+    return None
+
+
+def _raw_end_date(raw):
+    end = raw.get("end", {})
+    if "date" in end:
+        return datetime.date.fromisoformat(end["date"]) - datetime.timedelta(days=1)
+    if "dateTime" in end:
+        return _parse_datetime(end["dateTime"]).date()
+    return _raw_start_date(raw)
+
+
+def _raw_overlaps(raw, start, end):
+    raw_start, raw_end = _raw_start_date(raw), _raw_end_date(raw)
+    return raw_start is not None and raw_end is not None and raw_end >= start and raw_start <= end
