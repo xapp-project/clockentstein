@@ -121,6 +121,7 @@ class MainWindow(Gtk.Window):
     def _build_sidebar(self):
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         outer.set_size_request(225, -1)
+        outer.set_hexpand(False)
         for side in ("top", "bottom", "start", "end"):
             getattr(outer, f"set_margin_{side}")(8)
         self.mini_cal = MiniCalendar(self.current_date, self._on_mini_date_selected)
