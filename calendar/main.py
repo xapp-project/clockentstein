@@ -3,7 +3,7 @@ import os
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, Gdk
+from gi.repository import Gtk, Gdk, GLib
 from xapp.util import l10n
 
 _ = l10n("clockenstein")
@@ -13,6 +13,8 @@ from main_window import MainWindow
 
 
 def main():
+    GLib.set_prgname("org.x.clockenstein.Calendar")
+    GLib.set_application_name(_("Calendar"))
     css_provider = Gtk.CssProvider()
     css_path = os.path.join(os.path.dirname(__file__), "style.css")
     if os.path.exists(css_path):

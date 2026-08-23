@@ -7,4 +7,5 @@ Terminal=false
 Type=Application
 Categories=Office;Calendar;
 Keywords=calendar;event;appointment;Google;CalDAV;Nextcloud;
+StartupWMClass=org.x.clockenstein.Calendar
 StartupNotify=true
