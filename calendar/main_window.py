@@ -31,8 +31,13 @@ class MainWindow(Gtk.Window):
         self.set_icon_name("clockenstein-calendar")
         self.today = datetime.date.today()
         self.current_date = self.today
+        self._month_selected_date = self.today
+        self._week_selected_date = self.today
+        self._month_week_offset = 0
+        self._month_scroll_delta = 0
         saved_view = self.settings.get_string("default-view")
-        self._active_view = saved_view.title() if saved_view in ("month", "week", "day") else "Month"
+        view_names = {"month": "Month", "week": "Week", "day": "Day"}
+        self._active_view = view_names.get(saved_view, "Month")
         self._refreshing = False
         self._build_ui()
         geometry = Gdk.Geometry()
@@ -81,7 +86,8 @@ class MainWindow(Gtk.Window):
         view_box.get_style_context().add_class("linked")
         view_box.get_style_context().add_class("path-bar")
         self.view_buttons = {}
-        for name, label in (("Month", _("Month")), ("Week", _("Week")), ("Day", _("Day"))):
+        for name, label in (("Month", _("Month")), ("Week", _("Week")),
+                            ("Day", _("Day"))):
             button = Gtk.ToggleButton(label=label)
             button.connect("toggled", self._on_view_toggle, name)
             view_box.pack_start(button, False, False, 0)
@@ -111,10 +117,13 @@ class MainWindow(Gtk.Window):
         self.stack.set_hexpand(True)
         self.stack.set_vexpand(True)
         body.pack_start(self.stack, True, True, 0)
-        self.month_view = MonthView(self.today, self._on_event_activated, self._new_event)
-        self.week_view = WeekView(self.today, self._on_event_activated, self._new_event)
+        self.month_view = MonthView(self.today, self._on_event_activated, self._new_event,
+                                    self._scroll_month, self._select_month_date)
+        self.week_view = WeekView(self.today, self._on_event_activated, self._new_event,
+                                  self._select_week_date)
         self.day_view = DayView(self.today, self._on_event_activated, self._new_event)
-        for name, view in (("Month", self.month_view), ("Week", self.week_view), ("Day", self.day_view)):
+        for name, view in (("Month", self.month_view), ("Week", self.week_view),
+                           ("Day", self.day_view)):
             self.stack.add_named(view, name)
         self.view_buttons[self._active_view].set_active(True)
         self.stack.set_visible_child_name(self._active_view)
@@ -579,6 +588,8 @@ class MainWindow(Gtk.Window):
     def _navigate(self, direction):
         d = self.current_date
         if self._active_view == "Month":
+            self._month_week_offset = 0
+            self._month_scroll_delta = 0
             month, year = d.month + direction, d.year
             if month < 1: month, year = 12, year - 1
             if month > 12: month, year = 1, year + 1
@@ -587,11 +598,17 @@ class MainWindow(Gtk.Window):
             self.current_date += datetime.timedelta(weeks=direction)
         else:
             self.current_date += datetime.timedelta(days=direction)
+        self._month_selected_date = self.current_date
+        self._week_selected_date = self.current_date
         self._sync_mini_cal()
         self._refresh(refresh_remote=self.store.has_remote_accounts)
 
     def _go_today(self):
         self.current_date = self.today
+        self._month_selected_date = self.today
+        self._week_selected_date = self.today
+        self._month_week_offset = 0
+        self._month_scroll_delta = 0
         self._sync_mini_cal()
         self._refresh(refresh_remote=self.store.has_remote_accounts)
 
@@ -600,7 +617,44 @@ class MainWindow(Gtk.Window):
 
     def _on_mini_date_selected(self, date):
         self.current_date = date
+        self._month_selected_date = date
+        self._week_selected_date = date
+        self._month_week_offset = 0
+        self._month_scroll_delta = 0
         self._refresh(refresh_remote=self.store.has_remote_accounts)
+
+    def _scroll_month(self, direction):
+        if self._active_view != "Month":
+            return
+        self._month_scroll_delta += direction
+        steps = int(self._month_scroll_delta)
+        if not steps:
+            return
+        self._month_scroll_delta -= steps
+        start, _end = self._month_date_range()
+        start += datetime.timedelta(weeks=steps)
+        self._month_selected_date += datetime.timedelta(weeks=steps)
+        self.current_date = self._month_selected_date
+        self._set_month_grid_start(start)
+        self._week_selected_date = self.current_date
+        self.mini_cal.set_date(self._month_selected_date)
+        self._refresh(refresh_remote=self.store.has_remote_accounts)
+
+    def _select_month_date(self, date):
+        start, _end = self._month_date_range()
+        self.current_date = date
+        self._month_selected_date = date
+        self._week_selected_date = date
+        self._set_month_grid_start(start)
+        self.mini_cal.set_date(date)
+        self._refresh(refresh_remote=False)
+
+    def _select_week_date(self, date):
+        self.current_date = date
+        self._month_selected_date = date
+        self._week_selected_date = date
+        self.mini_cal.set_date(date)
+        self._refresh(refresh_remote=False)
 
     def _on_view_toggle(self, button, name):
         if not button.get_active():
@@ -631,7 +685,10 @@ class MainWindow(Gtk.Window):
         calendars = self.store.writable_calendars()
         if self._refreshing:
             calendars = [cal for cal in calendars if cal["provider"] == "local"]
-        dialog = EventDialog(self, store=self.store, default_date=default_date or self.current_date,
+        selected_date = (self._month_selected_date if self._active_view == "Month" else
+                         self._week_selected_date if self._active_view == "Week" else
+                         self.current_date)
+        dialog = EventDialog(self, store=self.store, default_date=default_date or selected_date,
                              calendar_options=calendars)
         if dialog.run() == Gtk.ResponseType.OK:
             self._refresh(refresh_remote=False)
@@ -646,12 +703,22 @@ class MainWindow(Gtk.Window):
     def _date_range(self):
         d = self.current_date
         if self._active_view == "Month":
-            start = datetime.date(d.year, d.month, 1) - datetime.timedelta(days=7)
-            return start, start + datetime.timedelta(days=48)
+            return self._month_date_range()
         if self._active_view == "Week":
             start = d - datetime.timedelta(days=d.weekday())
             return start, start + datetime.timedelta(days=6)
         return d, d
+
+    def _month_date_range(self):
+        first = datetime.date(self.current_date.year, self.current_date.month, 1)
+        start = (first - datetime.timedelta(days=first.weekday()) +
+                 datetime.timedelta(weeks=self._month_week_offset))
+        return start, start + datetime.timedelta(days=41)
+
+    def _set_month_grid_start(self, start):
+        first = datetime.date(self.current_date.year, self.current_date.month, 1)
+        base = first - datetime.timedelta(days=first.weekday())
+        self._month_week_offset = (start - base).days // 7
 
     def _refresh(self, refresh_remote=False):
         self._update_views()
@@ -714,8 +781,9 @@ class MainWindow(Gtk.Window):
     def _update_views(self):
         start, end = self._date_range()
         events = self._available_events(start, end)
-        self.month_view.update(self.current_date, events)
-        self.week_view.update(self.current_date, events)
+        self.month_view.update(self.current_date, events, self._month_week_offset,
+                               self._month_selected_date)
+        self.week_view.update(self.current_date, events, self._week_selected_date)
         self.day_view.update(self.current_date, events)
         self.mini_cal.set_events(self._available_events())
 

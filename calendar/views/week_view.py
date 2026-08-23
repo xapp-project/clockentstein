@@ -24,11 +24,14 @@ END_HOUR    = 24
 
 
 class WeekView(Gtk.Box):
-    def __init__(self, today: datetime.date, on_event: Callable, on_new_event: Callable):
+    def __init__(self, today: datetime.date, on_event: Callable, on_new_event: Callable,
+                 on_select=None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.today    = today
         self.on_event = on_event
         self.on_new_event = on_new_event
+        self.on_select = on_select
+        self.selected_date = today
         self._shows_today = True
         self._build()
 
@@ -83,7 +86,7 @@ class WeekView(Gtk.Box):
 
         self.day_overlays: list[_DayColumn] = []
         for i in range(7):
-            col = _DayColumn(self.on_event, self.on_new_event)
+            col = _DayColumn(self.on_event, self.on_new_event, self.on_select)
             body.pack_start(col, True, True, 0)
             self.day_overlays.append(col)
 
@@ -113,9 +116,11 @@ class WeekView(Gtk.Box):
         ))
         GLib.timeout_add_seconds(30, self._update_now_line)
 
-    def update(self, current_date: datetime.date, events: list[dict]):
-        monday = current_date - datetime.timedelta(days=current_date.weekday())
-        week = [monday + datetime.timedelta(days=i) for i in range(7)]
+    def update(self, current_date: datetime.date, events: list[dict], selected_date=None):
+        if selected_date is not None:
+            self.selected_date = selected_date
+        start = current_date - datetime.timedelta(days=current_date.weekday())
+        week = [start + datetime.timedelta(days=i) for i in range(7)]
         self._shows_today = self.today in week
 
         for lbl, day in zip(self.day_headers, week):
@@ -126,6 +131,10 @@ class WeekView(Gtk.Box):
             else:
                 lbl.set_text(text)
                 lbl.get_style_context().remove_class("clockenstein-today-header")
+            if day == self.selected_date:
+                lbl.get_style_context().add_class("clockenstein-selected-week-day")
+            else:
+                lbl.get_style_context().remove_class("clockenstein-selected-week-day")
 
         by_date: dict[datetime.date, list[dict]] = {}
         for ev in events:
@@ -139,6 +148,7 @@ class WeekView(Gtk.Box):
         for header, col, day in zip(self.day_headers, self.day_overlays, week):
             col.show_now = self._shows_today
             col.is_today = day == self.today
+            col.is_selected = day == self.selected_date
             day_events = by_date.get(day, [])
             col.set_events(day, day_events)
             has_events = bool(day_events)
@@ -170,23 +180,26 @@ class WeekView(Gtk.Box):
             text = now.strftime("%H:%M")
             self.now_label.set_text(text)
             self.right_now_label.set_text(text)
-            self.gutter.move(self.now_label, 0, _timeline_y(minutes) - 10)
-            self.right_gutter.move(self.right_now_label, 0, _timeline_y(minutes) - 10)
+            y = _timeline_y(minutes) - 10
+            self.gutter.move(self.now_label, 0, y)
+            self.right_gutter.move(self.right_now_label, 0, y)
         for column in self.day_overlays:
             column.queue_draw()
         return True
 
 
 class _DayColumn(Gtk.Overlay):
-    def __init__(self, on_event, on_new_event):
+    def __init__(self, on_event, on_new_event, on_select=None):
         super().__init__()
         self.on_event = on_event
         self.on_new_event = on_new_event
+        self.on_select = on_select
         self.day = None
         self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
         self.connect("button-press-event", self._on_background_click)
         self.show_now = True
         self.is_today = False
+        self.is_selected = False
         self.set_hexpand(True)
 
         self.background = Gtk.DrawingArea()
@@ -203,16 +216,19 @@ class _DayColumn(Gtk.Overlay):
         self._position_source = None
 
     def _on_background_click(self, _widget, event):
+        if event.button == 1 and self.day and self.on_select:
+            self.on_select(self.day)
         if event.type == Gdk.EventType.DOUBLE_BUTTON_PRESS and self.day:
             self.on_new_event(self.day)
             return True
         return False
 
     def _draw_background(self, widget, cr):
-        if self.is_today:
+        if self.is_today or self.is_selected:
             found, color = widget.get_style_context().lookup_color("theme_selected_bg_color")
             if found:
-                cr.set_source_rgba(color.red, color.green, color.blue, 0.07)
+                alpha = 0.13 if self.is_selected else 0.07
+                cr.set_source_rgba(color.red, color.green, color.blue, alpha)
                 cr.paint()
         _draw_day_grid(widget, cr)
         if self.show_now:

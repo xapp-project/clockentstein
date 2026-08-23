@@ -18,11 +18,15 @@ OVERFLOW_HEIGHT = 16
 
 
 class MonthView(Gtk.Box):
-    def __init__(self, today: datetime.date, on_event: Callable, on_day: Callable):
+    def __init__(self, today: datetime.date, on_event: Callable, on_day: Callable,
+                 on_scroll=None, on_select=None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.today    = today
         self.on_event = on_event
         self.on_day   = on_day
+        self.on_scroll = on_scroll
+        self.on_select = on_select
+        self.selected_date = today
         self.max_lanes = 1
         self.event_height = EVENT_HEIGHT
         self._last_update = None
@@ -61,18 +65,24 @@ class MonthView(Gtk.Box):
         self.cells: list[_DayCell] = []
         for row in range(6):
             for col in range(7):
-                cell = _DayCell(self.today, self.on_event, self.on_day)
+                cell = _DayCell(self.today, self.on_event, self.on_day, self.on_scroll,
+                                self.on_select)
                 self.grid.attach(cell, col, row, 1, 1)
                 self.cells.append(cell)
 
-    def update(self, current_date: datetime.date, events: list[dict]):
-        self._last_update = (current_date, events)
+    def update(self, current_date: datetime.date, events: list[dict], week_offset=0,
+               selected_date=None):
+        if selected_date is not None:
+            self.selected_date = selected_date
+        self._last_update = (current_date, events, week_offset, self.selected_date)
         first = current_date.replace(day=1)
-        grid_start = first - datetime.timedelta(days=first.weekday())
+        grid_start = (first - datetime.timedelta(days=first.weekday()) +
+                      datetime.timedelta(weeks=week_offset))
 
         for i, cell in enumerate(self.cells):
             day = grid_start + datetime.timedelta(days=i)
             cell.set_day(day, day.month == current_date.month)
+            cell.set_selected(day == self.selected_date)
 
         self._render_events(grid_start, events)
         self.show_all()
@@ -140,14 +150,18 @@ class MonthView(Gtk.Box):
 
 
 class _DayCell(Gtk.EventBox):
-    def __init__(self, today, on_event, on_day):
+    def __init__(self, today, on_event, on_day, on_scroll=None, on_select=None):
         super().__init__()
         self.today    = today
         self.on_event = on_event
         self.on_day   = on_day
+        self.on_scroll = on_scroll
+        self.on_select = on_select
         self._date    = None
         self.get_style_context().add_class("clockenstein-day-cell")
+        self.add_events(Gdk.EventMask.SCROLL_MASK)
         self.connect("button-press-event", self._on_click)
+        self.connect("scroll-event", self._on_scroll)
 
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
         outer.set_margin_top(2)
@@ -195,9 +209,29 @@ class _DayCell(Gtk.EventBox):
             f"{date.day} {date.strftime('%b')}" if date.day == 1 else str(date.day)
         )
 
+    def set_selected(self, selected):
+        context = self.get_style_context()
+        if selected:
+            context.add_class("clockenstein-selected-day")
+        else:
+            context.remove_class("clockenstein-selected-day")
+
     def _on_click(self, _w, ev):
+        if ev.button == 1 and self._date and self.on_select:
+            self.on_select(self._date)
         if ev.type == Gdk.EventType.DOUBLE_BUTTON_PRESS and self._date:
             self.on_day(self._date)
+
+    def _on_scroll(self, _widget, event):
+        if not self.on_scroll:
+            return False
+        if event.direction == Gdk.ScrollDirection.UP:
+            self.on_scroll(-1)
+        elif event.direction == Gdk.ScrollDirection.DOWN:
+            self.on_scroll(1)
+        elif event.direction == Gdk.ScrollDirection.SMOOTH:
+            self.on_scroll(event.delta_y)
+        return True
 
 
 class _SpanPill(Gtk.EventBox):
