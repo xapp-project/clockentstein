@@ -8,7 +8,7 @@ from xapp.util import l10n
 
 _ = l10n("clockenstein")
 
-from formatting import format_time
+from formatting import WEEKDAY_NAMES, format_time
 from views.colors import apply_tinted_event_color
 
 EVENT_HEIGHT = 22
@@ -41,7 +41,7 @@ class MonthView(Gtk.Box):
     def _build(self):
         dow = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         dow.get_style_context().add_class("clockenstein-dow-header")
-        for name in (_("MON"), _("TUE"), _("WED"), _("THU"), _("FRI"), _("SAT"), _("SUN")):
+        for name in WEEKDAY_NAMES:
             lbl = Gtk.Label(label=name)
             lbl.set_hexpand(True)
             lbl.set_xalign(1)

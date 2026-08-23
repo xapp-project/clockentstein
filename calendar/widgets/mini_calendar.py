@@ -8,6 +8,8 @@ from xapp.util import l10n
 
 _ = l10n("clockenstein")
 
+from formatting import WEEKDAY_NAMES
+
 
 class MiniCalendar(Gtk.Box):
     def __init__(self, date, on_date_selected):
@@ -47,8 +49,7 @@ class MiniCalendar(Gtk.Box):
         corner = Gtk.Label()
         corner.set_size_request(22, -1)
         weekdays.pack_start(corner, False, False, 0)
-        for name in (_("MON"), _("TUE"), _("WED"), _("THU"),
-                     _("FRI"), _("SAT"), _("SUN")):
+        for name in WEEKDAY_NAMES:
             label = Gtk.Label(label=name)
             label.set_hexpand(True)
             label.get_style_context().add_class("mini-calendar-weekday")

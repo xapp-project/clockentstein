@@ -8,6 +8,7 @@ from xapp.util import l10n
 
 _ = l10n("clockenstein")
 
+from formatting import WEEKDAY_NAMES
 from views.colors import apply_tinted_event_color
 from views.month_view import _event_has_ended, _event_tooltip
 from views.day_view import (ALL_DAY_EVENT_MARGIN, ALL_DAY_HEIGHT,
@@ -41,7 +42,9 @@ class WeekView(Gtk.Box):
         for i in range(7):
             lbl = Gtk.Label()
             lbl.set_hexpand(True)
+            lbl.set_justify(Gtk.Justification.CENTER)
             lbl.get_style_context().add_class("clockenstein-week-day-header")
+            lbl.get_style_context().add_class("clockenstein-dow-label")
             self.header.pack_start(lbl, True, True, 0)
             self.day_headers.append(lbl)
         right_spacer = Gtk.Label()
@@ -116,7 +119,7 @@ class WeekView(Gtk.Box):
         self._shows_today = self.today in week
 
         for lbl, day in zip(self.day_headers, week):
-            text = day.strftime("%a %-d")
+            text = f"{WEEKDAY_NAMES[day.weekday()]}\n{day.day}"
             if day == self.today:
                 lbl.set_markup(f"<b>{text}</b>")
                 lbl.get_style_context().add_class("clockenstein-today-header")
@@ -140,7 +143,7 @@ class WeekView(Gtk.Box):
             col.set_events(day, day_events)
             has_events = bool(day_events)
             expands = has_events or not week_has_events
-            header_text = day.strftime("%a %-d")
+            header_text = f"{WEEKDAY_NAMES[day.weekday()]}\n{day.day}"
             text_width, _text_height = header.create_pango_layout(header_text).get_pixel_size()
             compact_width = text_width + 16
             requested_width = -1 if expands else compact_width
