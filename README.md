@@ -1,6 +1,6 @@
 # Clockenstein Calendar
 
-<img width="1302" height="961" alt="image" src="https://github.com/user-attachments/assets/2bf9b694-ad78-4730-bfbb-67eb9618d29c" />
+<img width="1317" height="737" alt="image" src="https://github.com/user-attachments/assets/97f35ad3-e434-49cc-9ab1-1c37b216ecc7" />
 
 Calendar application for Linux desktops.
 
