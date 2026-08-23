@@ -23,10 +23,11 @@ END_HOUR    = 24
 
 
 class WeekView(Gtk.Box):
-    def __init__(self, today: datetime.date, on_event: Callable):
+    def __init__(self, today: datetime.date, on_event: Callable, on_new_event: Callable):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.today    = today
         self.on_event = on_event
+        self.on_new_event = on_new_event
         self._shows_today = True
         self._build()
 
@@ -79,7 +80,7 @@ class WeekView(Gtk.Box):
 
         self.day_overlays: list[_DayColumn] = []
         for i in range(7):
-            col = _DayColumn(self.on_event)
+            col = _DayColumn(self.on_event, self.on_new_event)
             body.pack_start(col, True, True, 0)
             self.day_overlays.append(col)
 
@@ -170,9 +171,13 @@ class WeekView(Gtk.Box):
 
 
 class _DayColumn(Gtk.Overlay):
-    def __init__(self, on_event):
+    def __init__(self, on_event, on_new_event):
         super().__init__()
         self.on_event = on_event
+        self.on_new_event = on_new_event
+        self.day = None
+        self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        self.connect("button-press-event", self._on_background_click)
         self.show_now = True
         self.set_hexpand(True)
 
@@ -189,6 +194,12 @@ class _DayColumn(Gtk.Overlay):
         self._positioned_events = []
         self._position_source = None
 
+    def _on_background_click(self, _widget, event):
+        if event.type == Gdk.EventType.DOUBLE_BUTTON_PRESS and self.day:
+            self.on_new_event(self.day)
+            return True
+        return False
+
     def _draw_background(self, widget, cr):
         _draw_day_grid(widget, cr)
         if self.show_now:
@@ -197,6 +208,7 @@ class _DayColumn(Gtk.Overlay):
         return False
 
     def set_events(self, day, events):
+        self.day = day
         for child in self.event_layer.get_children():
             self.event_layer.remove(child)
         self._positioned_events = []

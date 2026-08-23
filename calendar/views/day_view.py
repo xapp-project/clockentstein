@@ -3,7 +3,7 @@ from typing import Callable
 
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, GLib, Pango
+from gi.repository import Gtk, Gdk, GLib, Pango
 from xapp.util import l10n
 
 _ = l10n("clockenstein")
@@ -22,11 +22,12 @@ EVENT_COLUMN_GAP = 4
 
 
 class DayView(Gtk.Box):
-    def __init__(self, today: datetime.date, on_event: Callable):
+    def __init__(self, today: datetime.date, on_event: Callable, on_new_event: Callable):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.today    = today
         self.current_date = today
         self.on_event = on_event
+        self.on_new_event = on_new_event
         self._positioned_events = []
         self._build()
 
@@ -63,11 +64,15 @@ class DayView(Gtk.Box):
 
         self.overlay = Gtk.Overlay()
         self.overlay.set_hexpand(True)
+        self.overlay.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        self.overlay.connect("button-press-event", self._on_background_click)
         body.pack_start(self.overlay, True, True, 0)
 
         self.background = Gtk.DrawingArea()
         self.background.set_size_request(-1, TIMELINE_HEIGHT)
+        self.background.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
         self.background.connect("draw", self._draw_background)
+        self.background.connect("button-press-event", self._on_background_click)
         self.overlay.add(self.background)
 
         self.event_layer = Gtk.Fixed()
@@ -143,6 +148,12 @@ class DayView(Gtk.Box):
         self.show_all()
         self._position_event_widgets(self.event_layer, self.event_layer.get_allocation())
         self._update_now_line()
+
+    def _on_background_click(self, _widget, event):
+        if event.type == Gdk.EventType.DOUBLE_BUTTON_PRESS:
+            self.on_new_event(self.current_date)
+            return True
+        return False
 
     def _draw_background(self, widget, cr):
         _draw_day_grid(widget, cr)

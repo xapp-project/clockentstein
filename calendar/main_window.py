@@ -109,9 +109,9 @@ class MainWindow(Gtk.Window):
         self.stack.set_hexpand(True)
         self.stack.set_vexpand(True)
         body.pack_start(self.stack, True, True, 0)
-        self.month_view = MonthView(self.today, self._on_event_activated, self._on_day_activated)
-        self.week_view = WeekView(self.today, self._on_event_activated)
-        self.day_view = DayView(self.today, self._on_event_activated)
+        self.month_view = MonthView(self.today, self._on_event_activated, self._new_event)
+        self.week_view = WeekView(self.today, self._on_event_activated, self._new_event)
+        self.day_view = DayView(self.today, self._on_event_activated, self._new_event)
         for name, view in (("Month", self.month_view), ("Week", self.week_view), ("Day", self.day_view)):
             self.stack.add_named(view, name)
         self.view_buttons[self._active_view].set_active(True)
@@ -527,19 +527,14 @@ class MainWindow(Gtk.Window):
             self.settings.set_int("window-height", event.height)
         return False
 
-    def _on_day_activated(self, date):
-        self.current_date = date
-        self._sync_mini_cal()
-        self.view_buttons["Day"].set_active(True)
-
     def _on_event_activated(self, event):
         dialog = EventDialog(self, store=self.store, event=event)
         if dialog.run() in (Gtk.ResponseType.OK, Gtk.ResponseType.REJECT):
             self._refresh(refresh_remote=False)
         dialog.destroy()
 
-    def _new_event(self):
-        dialog = EventDialog(self, store=self.store, default_date=self.current_date)
+    def _new_event(self, default_date=None):
+        dialog = EventDialog(self, store=self.store, default_date=default_date or self.current_date)
         if dialog.run() == Gtk.ResponseType.OK:
             self._refresh(refresh_remote=False)
         dialog.destroy()
