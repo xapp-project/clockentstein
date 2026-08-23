@@ -10,7 +10,9 @@ from xapp.util import l10n
 _ = l10n("clockenstein")
 
 from event_dialog import EventDialog
+from formatting import capitalize_first, format_time
 from store import CalendarManager
+from views.colors import apply_tinted_event_color
 from views.month_view import MonthView
 from views.week_view import WeekView
 from views.day_view import DayView
@@ -127,12 +129,23 @@ class MainWindow(Gtk.Window):
         self.mini_cal = MiniCalendar(self.current_date, self._on_mini_date_selected)
         outer.pack_start(self.mini_cal, False, False, 0)
         outer.pack_start(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL), False, False, 4)
+        calendars_label = Gtk.Label(label=_("Calendars"), xalign=0)
+        calendars_label.get_style_context().add_class("clockenstein-section-label")
+        outer.pack_start(calendars_label, False, False, 0)
 
         visible_scroll = Gtk.ScrolledWindow()
         visible_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        visible_scroll.set_propagate_natural_height(True)
+        visible_scroll.set_max_content_height(180)
         self.visible_calendar_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         visible_scroll.add(self.visible_calendar_box)
-        outer.pack_start(visible_scroll, True, True, 0)
+        outer.pack_start(visible_scroll, False, False, 0)
+        outer.pack_start(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL), False, False, 4)
+        upcoming_scroll = Gtk.ScrolledWindow()
+        upcoming_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.upcoming_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        upcoming_scroll.add(self.upcoming_box)
+        outer.pack_start(upcoming_scroll, True, True, 0)
         self.status_label = Gtk.Label()
         self.status_label.set_xalign(0)
         self.status_label.set_line_wrap(True)
@@ -161,6 +174,7 @@ class MainWindow(Gtk.Window):
             if cal.get("visible", True):
                 self.visible_calendar_box.pack_start(self._calendar_label(cal), False, False, 0)
         self.visible_calendar_box.show_all()
+        self._populate_upcoming()
 
         states = self.store.google.account_states() + self.store.caldav.account_states()
         offline = [s for s in states if not s.get("online")]
@@ -169,6 +183,78 @@ class MainWindow(Gtk.Window):
             self._set_status(_("Some online calendars are disconnected (read-only).") + " " + names)
         else:
             self._set_status("")
+
+    def _populate_upcoming(self):
+        for child in self.upcoming_box.get_children():
+            self.upcoming_box.remove(child)
+
+        now = datetime.datetime.now()
+        today = now.date()
+        upcoming = []
+        for event in self.store.get_events():
+            start_date = event["date_start"]
+            start_time = event.get("time_start")
+            if start_date < today:
+                continue
+            if start_date == today and not event.get("all_day"):
+                if start_time is None or start_time < now.time():
+                    continue
+            upcoming.append(event)
+
+        upcoming.sort(key=lambda event: (event["date_start"],
+                                         event.get("time_start") or datetime.time.min))
+        upcoming = upcoming[:6]
+        tomorrow = today + datetime.timedelta(days=1)
+        groups = ((_("Today"), [event for event in upcoming if event["date_start"] == today], False),
+                  (_("Tomorrow"), [event for event in upcoming if event["date_start"] == tomorrow], False),
+                  (_("Coming Up"), [event for event in upcoming if event["date_start"] > tomorrow], True))
+        for heading, events, show_date in groups:
+            if not events:
+                continue
+            label = Gtk.Label(label=heading, xalign=0)
+            label.get_style_context().add_class("clockenstein-section-label")
+            self.upcoming_box.pack_start(label, False, False, 0)
+            for event in events:
+                self.upcoming_box.pack_start(self._upcoming_row(event, show_date), False, False, 0)
+        if not upcoming:
+            empty = Gtk.Label(label=_("No upcoming events"), xalign=0)
+            empty.get_style_context().add_class("clockenstein-status")
+            self.upcoming_box.pack_start(empty, False, False, 4)
+        self.upcoming_box.show_all()
+
+    def _upcoming_row(self, event, show_date):
+        button = Gtk.Button()
+        button.set_relief(Gtk.ReliefStyle.NONE)
+        button.get_style_context().add_class("clockenstein-upcoming-row")
+        if event.get("all_day"):
+            apply_tinted_event_color(button, event)
+        button.connect("clicked", lambda _button: self._on_event_activated(event))
+        content = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        if not event.get("all_day"):
+            swatch = Gtk.DrawingArea()
+            swatch.set_size_request(10, 10)
+            swatch.set_valign(Gtk.Align.START)
+            swatch.set_margin_top(4)
+            rgba = Gdk.RGBA()
+            rgba.parse(event.get("calendar_color", "#2aa198"))
+            swatch.connect("draw", _draw_calendar_swatch, rgba)
+            content.pack_start(swatch, False, False, 0)
+        labels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        title = Gtk.Label(label=event.get("summary") or _("Untitled"), xalign=0)
+        title.set_ellipsize(Pango.EllipsizeMode.END)
+        title.get_style_context().add_class("clockenstein-upcoming-title")
+        parts = [capitalize_first(event["date_start"].strftime("%A %-d %b"))] if show_date else []
+        if not event.get("all_day") and event.get("time_start"):
+            parts.append(format_time(event["time_start"]))
+        when = " · ".join(parts)
+        if when:
+            detail = Gtk.Label(label=when, xalign=0)
+            detail.get_style_context().add_class("clockenstein-upcoming-detail")
+            labels.pack_start(detail, False, False, 0)
+        labels.pack_start(title, False, False, 0)
+        content.pack_start(labels, True, True, 0)
+        button.add(content)
+        return button
 
     def _fill_calendar_box(self, box):
         for child in box.get_children():

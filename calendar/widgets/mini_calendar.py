@@ -18,6 +18,7 @@ class MiniCalendar(Gtk.Box):
         self.events = []
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.SLIDE_LEFT_RIGHT,
                                transition_duration=120)
+        self.stack.set_vhomogeneous(False)
         calendar_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         self.month_button = Gtk.Button()
