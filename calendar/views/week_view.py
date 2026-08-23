@@ -303,8 +303,19 @@ class _DayColumn(Gtk.Overlay):
 class _WeekEventButton(Gtk.EventBox):
     def __init__(self):
         super().__init__()
+        self.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
+        self.connect("enter-notify-event", self._on_pointer_enter)
+        self.connect("leave-notify-event", self._on_pointer_leave)
         self._timeline_width = 1
         self._timeline_height = 1
+
+    def _on_pointer_enter(self, _widget, _event):
+        self.set_state_flags(Gtk.StateFlags.PRELIGHT, False)
+        return False
+
+    def _on_pointer_leave(self, _widget, _event):
+        self.unset_state_flags(Gtk.StateFlags.PRELIGHT)
+        return False
 
     def set_timeline_size(self, width, height):
         size = (max(1, width), max(1, height))

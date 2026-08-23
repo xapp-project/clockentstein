@@ -24,13 +24,13 @@ def apply_tinted_event_color(widget, event):
     provider = Gtk.CssProvider()
     provider.load_from_data(f"""
         * {{
-            background-color: rgba({red}, {green}, {blue}, 0.16);
+            background-color: mix(@theme_bg_color, rgb({red}, {green}, {blue}), 0.24);
             background-image: none;
             color: @theme_fg_color;
             border-left: 4px solid rgb({red}, {green}, {blue});
         }}
         *:hover {{
-            background-color: rgba({red}, {green}, {blue}, 0.27);
+            background-color: mix(@theme_bg_color, rgb({red}, {green}, {blue}), 0.35);
             background-image: none;
         }}
     """.encode("utf-8"))
