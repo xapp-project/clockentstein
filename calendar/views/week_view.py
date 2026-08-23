@@ -135,6 +135,7 @@ class WeekView(Gtk.Box):
 
         for header, col, day in zip(self.day_headers, self.day_overlays, week):
             col.show_now = self._shows_today
+            col.is_today = day == self.today
             day_events = by_date.get(day, [])
             col.set_events(day, day_events)
             has_events = bool(day_events)
@@ -182,6 +183,7 @@ class _DayColumn(Gtk.Overlay):
         self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
         self.connect("button-press-event", self._on_background_click)
         self.show_now = True
+        self.is_today = False
         self.set_hexpand(True)
 
         self.background = Gtk.DrawingArea()
@@ -204,6 +206,11 @@ class _DayColumn(Gtk.Overlay):
         return False
 
     def _draw_background(self, widget, cr):
+        if self.is_today:
+            found, color = widget.get_style_context().lookup_color("theme_selected_bg_color")
+            if found:
+                cr.set_source_rgba(color.red, color.green, color.blue, 0.07)
+                cr.paint()
         _draw_day_grid(widget, cr)
         if self.show_now:
             _draw_now_line(widget, cr)
