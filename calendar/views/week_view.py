@@ -131,24 +131,27 @@ class WeekView(Gtk.Box):
                 by_date.setdefault(day, []).append(ev)
                 day += datetime.timedelta(days=1)
 
+        week_has_events = any(by_date.get(day) for day in week)
+
         for header, col, day in zip(self.day_headers, self.day_overlays, week):
             col.show_now = self._shows_today
             day_events = by_date.get(day, [])
             col.set_events(day, day_events)
             has_events = bool(day_events)
+            expands = has_events or not week_has_events
             header_text = day.strftime("%a %-d")
             text_width, _text_height = header.create_pango_layout(header_text).get_pixel_size()
             compact_width = text_width + 16
-            requested_width = -1 if has_events else compact_width
+            requested_width = -1 if expands else compact_width
             header.set_size_request(requested_width, -1)
-            header.set_hexpand(has_events)
+            header.set_hexpand(expands)
             col.set_size_request(requested_width, -1)
-            col.set_hexpand(has_events)
+            col.set_hexpand(expands)
             self.header.set_child_packing(
-                header, has_events, True, 0, Gtk.PackType.START
+                header, expands, True, 0, Gtk.PackType.START
             )
             self.timeline_body.set_child_packing(
-                col, has_events, True, 0, Gtk.PackType.START
+                col, expands, True, 0, Gtk.PackType.START
             )
 
         self.show_all()
