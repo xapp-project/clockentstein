@@ -67,6 +67,7 @@ class EventDialog(Gtk.Dialog):
         store: CalendarManager,
         event: Optional[dict] = None,
         default_date: Optional[datetime.date] = None,
+        calendar_options: Optional[list] = None,
     ):
         is_new = event is None
         editable = is_new or bool(event.get("editable", True))
@@ -81,7 +82,8 @@ class EventDialog(Gtk.Dialog):
         self.editable = editable
         self._populating = True
         self._adjusting_end = False
-        self.calendar_options = store.writable_calendars() if is_new else [self.event]
+        self.calendar_options = (calendar_options if is_new and calendar_options is not None else
+                                 store.writable_calendars() if is_new else [self.event])
 
         self.set_default_size(420, -1)
         self.add_button(_("Cancel") if editable else _("Close"), Gtk.ResponseType.CANCEL)

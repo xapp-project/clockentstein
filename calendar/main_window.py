@@ -172,7 +172,10 @@ class MainWindow(Gtk.Window):
             self.visible_calendar_box.remove(child)
         for cal in self._sorted_calendars():
             if cal.get("visible", True):
-                self.visible_calendar_box.pack_start(self._calendar_label(cal), False, False, 0)
+                label = self._calendar_label(cal)
+                if not self._calendar_available(cal):
+                    label.set_opacity(0.5)
+                self.visible_calendar_box.pack_start(label, False, False, 0)
         self.visible_calendar_box.show_all()
         self._populate_upcoming()
 
@@ -191,7 +194,7 @@ class MainWindow(Gtk.Window):
         now = datetime.datetime.now()
         today = now.date()
         upcoming = []
-        for event in self.store.get_events():
+        for event in self._available_events():
             start_date = event["date_start"]
             start_time = event.get("time_start")
             if start_date < today:
@@ -306,6 +309,10 @@ class MainWindow(Gtk.Window):
                         box.pack_start(section_label, False, False, 2)
                         previous_section = section
                 row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+                if cal["provider"] != "local" and not self._calendar_available(cal):
+                    row_box.set_opacity(0.5)
+                if cal["provider"] != "local" and self._refreshing:
+                    row_box.set_sensitive(False)
                 row_box.pack_start(self._calendar_label(cal), True, True, 0)
                 visibility = Gtk.Switch()
                 visibility.set_active(cal.get("visible", True))
@@ -621,7 +628,11 @@ class MainWindow(Gtk.Window):
         dialog.destroy()
 
     def _new_event(self, default_date=None):
-        dialog = EventDialog(self, store=self.store, default_date=default_date or self.current_date)
+        calendars = self.store.writable_calendars()
+        if self._refreshing:
+            calendars = [cal for cal in calendars if cal["provider"] == "local"]
+        dialog = EventDialog(self, store=self.store, default_date=default_date or self.current_date,
+                             calendar_options=calendars)
         if dialog.run() == Gtk.ResponseType.OK:
             self._refresh(refresh_remote=False)
         dialog.destroy()
@@ -669,6 +680,7 @@ class MainWindow(Gtk.Window):
         return False
 
     def _set_refreshing(self, active):
+        changed = active != self._refreshing
         self._refreshing = active
         self.refresh_button.set_sensitive(not active)
         if active:
@@ -678,13 +690,34 @@ class MainWindow(Gtk.Window):
             self.spinner.stop()
             self.spinner.hide()
 
+        if active and changed:
+            self._update_views()
+            self._populate_calendar_list()
+
+    def _calendar_available(self, calendar):
+        if calendar.get("provider") == "local":
+            return True
+        provider = calendar.get("provider")
+        states = (self.store.google.account_states() if provider == "google" else
+                  self.store.caldav.account_states())
+        return (not self._refreshing and
+                any(state["id"] == calendar.get("account_id") and state.get("online")
+                    for state in states))
+
+    def _available_events(self, start=None, end=None):
+        events = self.store.get_events(start, end)
+        if self._refreshing:
+            return [event if event.get("provider") == "local" else
+                    {**event, "editable": False} for event in events]
+        return events
+
     def _update_views(self):
         start, end = self._date_range()
-        events = self.store.get_events(start, end)
+        events = self._available_events(start, end)
         self.month_view.update(self.current_date, events)
         self.week_view.update(self.current_date, events)
         self.day_view.update(self.current_date, events)
-        self.mini_cal.set_events(self.store.get_events())
+        self.mini_cal.set_events(self._available_events())
 
 
 def _month_days(year, month):
