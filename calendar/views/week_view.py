@@ -9,7 +9,7 @@ from xapp.util import l10n
 _ = l10n("clockenstein")
 
 from views.colors import apply_tinted_event_color
-from views.month_view import _event_tooltip
+from views.month_view import _event_has_ended, _event_tooltip
 from views.day_view import (ALL_DAY_EVENT_MARGIN, ALL_DAY_HEIGHT,
                             DAY_END_MINUTE, DAY_START_MINUTE,
                             TIMELINE_HEIGHT,
@@ -225,6 +225,8 @@ class _DayColumn(Gtk.Overlay):
             btn.get_style_context().add_class("clockenstein-week-event")
             btn.get_style_context().add_class("clockenstein-week-timeline-event")
             apply_tinted_event_color(btn, ev)
+            if _event_has_ended(ev):
+                btn.set_opacity(0.5)
             btn.connect("button-press-event",
                         lambda _widget, _click, e=ev: self.on_event(e))
             tooltip_markup = _event_tooltip(ev)

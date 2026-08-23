@@ -9,6 +9,7 @@ from xapp.util import l10n
 _ = l10n("clockenstein")
 
 from views.colors import apply_tinted_event_color
+from views.month_view import _event_has_ended
 
 HOUR_HEIGHT = 48
 DAY_START_MINUTE = 0
@@ -108,6 +109,8 @@ class DayView(Gtk.Box):
             btn.get_style_context().add_class("clockenstein-week-event")
             btn.get_style_context().add_class("clockenstein-day-event")
             apply_tinted_event_color(btn, ev)
+            if _event_has_ended(ev):
+                btn.set_opacity(0.5)
             btn.connect("clicked", lambda _, e=ev: self.on_event(e))
             content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
             content.set_valign(Gtk.Align.CENTER if full_day_column else Gtk.Align.START)
