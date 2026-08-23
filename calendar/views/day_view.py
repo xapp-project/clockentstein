@@ -85,7 +85,7 @@ class DayView(Gtk.Box):
             lbl.get_style_context().add_class("clockenstein-time-label")
             # Centre the label on the same coordinate used by the grid line and
             # by events starting exactly on the hour.
-            self.gutter.put(lbl, 0, _minute_to_y(h * 60) - 10)
+            self.gutter.put(lbl, 0, max(0, _minute_to_y(h * 60) - 10))
         self.now_label = Gtk.Label()
         self.now_label.set_size_request(52, 20)
         self.now_label.set_xalign(1)
