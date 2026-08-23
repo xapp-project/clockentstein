@@ -610,7 +610,7 @@ class MainWindow(Gtk.Window):
     def _update_date_label(self):
         d = self.current_date
         if self._active_view == "Month":
-            text = d.strftime("%B %Y")
+            text = _capitalize_first(d.strftime("%B %Y"))
         elif self._active_view == "Week":
             monday = d - datetime.timedelta(days=d.weekday())
             sunday = monday + datetime.timedelta(days=6)
@@ -619,6 +619,10 @@ class MainWindow(Gtk.Window):
         else:
             text = d.strftime("%A, %B %-d, %Y")
         self.date_label.set_text(text)
+
+
+def _capitalize_first(text):
+    return text[:1].upper() + text[1:]
 
 
 def _month_days(year, month):

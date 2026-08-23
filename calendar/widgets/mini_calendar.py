@@ -46,9 +46,9 @@ class MiniCalendar(Gtk.Box):
         corner = Gtk.Label()
         corner.set_size_request(22, -1)
         weekdays.pack_start(corner, False, False, 0)
-        monday = datetime.date(2024, 1, 1)
-        for offset in range(7):
-            label = Gtk.Label(label=(monday + datetime.timedelta(days=offset)).strftime("%a").upper())
+        for name in (_("MON"), _("TUE"), _("WED"), _("THU"),
+                     _("FRI"), _("SAT"), _("SUN")):
+            label = Gtk.Label(label=name)
             label.set_hexpand(True)
             label.get_style_context().add_class("mini-calendar-weekday")
             weekdays.pack_start(label, True, True, 0)
@@ -88,7 +88,7 @@ class MiniCalendar(Gtk.Box):
         self._render()
 
     def _show_months(self, _button):
-        values = [(month, datetime.date(2024, month, 1).strftime("%B"))
+        values = [(month, _capitalize_first(datetime.date(2024, month, 1).strftime("%B")))
                   for month in range(1, 13)]
         self._show_selector(_("Select Month"), "month", values, self.date.month)
 
@@ -158,7 +158,7 @@ class MiniCalendar(Gtk.Box):
         self.on_date_selected(date)
 
     def _render(self):
-        self.month_label.set_text(self.date.strftime("%B"))
+        self.month_label.set_text(_capitalize_first(self.date.strftime("%B")))
         self.year_label.set_text(str(self.date.year))
         for child in self.weeks_box.get_children():
             self.weeks_box.remove(child)
@@ -211,6 +211,10 @@ class MiniCalendar(Gtk.Box):
                     colors.append(color)
                 day += datetime.timedelta(days=1)
         return result
+
+
+def _capitalize_first(text):
+    return text[:1].upper() + text[1:]
 
 
 class _EventDots(Gtk.DrawingArea):
