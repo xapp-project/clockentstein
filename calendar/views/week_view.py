@@ -13,10 +13,9 @@ from views.colors import apply_tinted_event_color
 from views.month_view import _event_has_ended, _event_tooltip
 from views.day_view import (ALL_DAY_EVENT_MARGIN, ALL_DAY_HEIGHT,
                             DAY_END_MINUTE, DAY_START_MINUTE,
-                            TIMELINE_HEIGHT,
                             _assign_event_columns, _draw_day_grid, _draw_now_line,
                             _minute_to_y,
-                            _timed_segment_minutes, _timeline_y)
+                            _timed_segment_minutes)
 
 HOUR_HEIGHT = 48
 START_HOUR  = 0
@@ -55,6 +54,25 @@ class WeekView(Gtk.Box):
         self.header.pack_end(right_spacer, False, False, 0)
         self.pack_start(self.header, False, False, 0)
 
+        self.all_day_body = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        self.pack_start(self.all_day_body, False, False, 0)
+        all_day_label = Gtk.Label(label=_("All day"))
+        all_day_label.set_size_request(52, ALL_DAY_HEIGHT)
+        all_day_label.set_xalign(1)
+        all_day_label.get_style_context().add_class("clockenstein-time-label")
+        self.all_day_body.pack_start(all_day_label, False, False, 0)
+        self.all_day_overlays: list[_DayColumn] = []
+        for _index in range(7):
+            column = _DayColumn(self.on_event, self.on_new_event, self.on_select,
+                                all_day_only=True)
+            self.all_day_body.pack_start(column, True, True, 0)
+            self.all_day_overlays.append(column)
+        right_all_day = Gtk.Label(label=_("All day"))
+        right_all_day.set_size_request(52, ALL_DAY_HEIGHT)
+        right_all_day.set_xalign(0)
+        right_all_day.get_style_context().add_class("clockenstein-time-label")
+        self.all_day_body.pack_end(right_all_day, False, False, 0)
+
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         self.pack_start(scroll, True, True, 0)
@@ -64,20 +82,15 @@ class WeekView(Gtk.Box):
         self.timeline_body = body
 
         self.gutter = Gtk.Fixed()
-        self.gutter.set_size_request(52, TIMELINE_HEIGHT)
+        self.gutter.set_size_request(52, DAY_END_MINUTE // 60 * HOUR_HEIGHT)
         body.pack_start(self.gutter, False, False, 0)
-        all_day_label = Gtk.Label(label=_("All day"))
-        all_day_label.set_size_request(52, 20)
-        all_day_label.set_xalign(1)
-        all_day_label.get_style_context().add_class("clockenstein-time-label")
-        self.gutter.put(all_day_label, 0, (ALL_DAY_HEIGHT - 20) // 2)
         for h in range(START_HOUR, END_HOUR):
             lbl = Gtk.Label(label=f"{h:02d}:00")
             lbl.set_size_request(52, 20)
             lbl.set_xalign(1)
             lbl.set_yalign(0.5)
             lbl.get_style_context().add_class("clockenstein-time-label")
-            self.gutter.put(lbl, 0, _timeline_y(h * 60) - 10)
+            self.gutter.put(lbl, 0, _minute_to_y(h * 60) - 10)
         self.now_label = Gtk.Label()
         self.now_label.set_size_request(52, 20)
         self.now_label.set_xalign(1)
@@ -91,20 +104,15 @@ class WeekView(Gtk.Box):
             self.day_overlays.append(col)
 
         self.right_gutter = Gtk.Fixed()
-        self.right_gutter.set_size_request(52, TIMELINE_HEIGHT)
+        self.right_gutter.set_size_request(52, DAY_END_MINUTE // 60 * HOUR_HEIGHT)
         body.pack_end(self.right_gutter, False, False, 0)
-        right_all_day = Gtk.Label(label=_("All day"))
-        right_all_day.set_size_request(52, 20)
-        right_all_day.set_xalign(0)
-        right_all_day.get_style_context().add_class("clockenstein-time-label")
-        self.right_gutter.put(right_all_day, 0, (ALL_DAY_HEIGHT - 20) // 2)
         for hour in range(START_HOUR, END_HOUR):
             label = Gtk.Label(label=f"{hour:02d}:00")
             label.set_size_request(52, 20)
             label.set_xalign(0)
             label.set_yalign(0.5)
             label.get_style_context().add_class("clockenstein-time-label")
-            self.right_gutter.put(label, 0, _timeline_y(hour * 60) - 10)
+            self.right_gutter.put(label, 0, _minute_to_y(hour * 60) - 10)
         self.right_now_label = Gtk.Label()
         self.right_now_label.set_size_request(52, 20)
         self.right_now_label.set_xalign(0)
@@ -112,7 +120,7 @@ class WeekView(Gtk.Box):
         self.right_gutter.put(self.right_now_label, 0, 0)
 
         self.connect("map", lambda _w: GLib.idle_add(
-            scroll.get_vadjustment().set_value, ALL_DAY_HEIGHT + 7 * HOUR_HEIGHT
+            scroll.get_vadjustment().set_value, 7 * HOUR_HEIGHT
         ))
         GLib.timeout_add_seconds(30, self._update_now_line)
 
@@ -145,12 +153,19 @@ class WeekView(Gtk.Box):
 
         week_has_events = any(by_date.get(day) for day in week)
 
-        for header, col, day in zip(self.day_headers, self.day_overlays, week):
+        for header, all_day_col, col, day in zip(
+                self.day_headers, self.all_day_overlays, self.day_overlays, week):
             col.show_now = self._shows_today
-            col.is_today = day == self.today
-            col.is_selected = day == self.selected_date
+            for column in (all_day_col, col):
+                column.is_today = day == self.today
+                column.is_selected = day == self.selected_date
             day_events = by_date.get(day, [])
-            col.set_events(day, day_events)
+            all_day_events = [event for event in day_events
+                              if event["all_day"] or event["time_start"] is None]
+            timed_events = [event for event in day_events
+                            if not event["all_day"] and event["time_start"] is not None]
+            all_day_col.set_events(day, all_day_events)
+            col.set_events(day, timed_events)
             has_events = bool(day_events)
             expands = has_events or not week_has_events
             header_text = f"{WEEKDAY_NAMES[day.weekday()]}\n{day.day}"
@@ -161,11 +176,16 @@ class WeekView(Gtk.Box):
             header.set_hexpand(expands)
             col.set_size_request(requested_width, -1)
             col.set_hexpand(expands)
+            all_day_col.set_size_request(requested_width, -1)
+            all_day_col.set_hexpand(expands)
             self.header.set_child_packing(
                 header, expands, True, 0, Gtk.PackType.START
             )
             self.timeline_body.set_child_packing(
                 col, expands, True, 0, Gtk.PackType.START
+            )
+            self.all_day_body.set_child_packing(
+                all_day_col, expands, True, 0, Gtk.PackType.START
             )
 
         self.show_all()
@@ -180,36 +200,40 @@ class WeekView(Gtk.Box):
             text = now.strftime("%H:%M")
             self.now_label.set_text(text)
             self.right_now_label.set_text(text)
-            y = _timeline_y(minutes) - 10
+            y = _minute_to_y(minutes) - 10
             self.gutter.move(self.now_label, 0, y)
             self.right_gutter.move(self.right_now_label, 0, y)
         for column in self.day_overlays:
+            column.queue_draw()
+        for column in self.all_day_overlays:
             column.queue_draw()
         return True
 
 
 class _DayColumn(Gtk.Overlay):
-    def __init__(self, on_event, on_new_event, on_select=None):
+    def __init__(self, on_event, on_new_event, on_select=None, all_day_only=False):
         super().__init__()
         self.on_event = on_event
         self.on_new_event = on_new_event
         self.on_select = on_select
+        self.all_day_only = all_day_only
         self.day = None
         self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
         self.connect("button-press-event", self._on_background_click)
-        self.show_now = True
+        self.show_now = not all_day_only
         self.is_today = False
         self.is_selected = False
         self.set_hexpand(True)
 
         self.background = Gtk.DrawingArea()
-        self.background.set_size_request(-1, TIMELINE_HEIGHT)
+        height = ALL_DAY_HEIGHT if all_day_only else DAY_END_MINUTE // 60 * HOUR_HEIGHT
+        self.background.set_size_request(-1, height)
         self.background.connect("draw", self._draw_background)
         self.add(self.background)
 
         self.event_layer = Gtk.Fixed()
         self.event_layer.set_hexpand(True)
-        self.event_layer.set_size_request(-1, TIMELINE_HEIGHT)
+        self.event_layer.set_size_request(-1, height)
         self.event_layer.connect("size-allocate", self._position_events)
         self.add_overlay(self.event_layer)
         self._positioned_events = []
@@ -230,9 +254,19 @@ class _DayColumn(Gtk.Overlay):
                 alpha = 0.13 if self.is_selected else 0.07
                 cr.set_source_rgba(color.red, color.green, color.blue, alpha)
                 cr.paint()
-        _draw_day_grid(widget, cr)
-        if self.show_now:
-            _draw_now_line(widget, cr)
+        if self.all_day_only:
+            cr.set_source_rgba(0.35, 0.35, 0.35, 0.75)
+            cr.set_line_width(2)
+            cr.move_to(0, ALL_DAY_HEIGHT - 1)
+            cr.line_to(widget.get_allocated_width(), ALL_DAY_HEIGHT - 1)
+            cr.stroke()
+        else:
+            cr.save()
+            cr.translate(0, -ALL_DAY_HEIGHT)
+            _draw_day_grid(widget, cr)
+            if self.show_now:
+                _draw_now_line(widget, cr)
+            cr.restore()
         _draw_day_separator(widget, cr)
         return False
 
@@ -282,7 +316,7 @@ class _DayColumn(Gtk.Overlay):
                 tooltip_target.connect("query-tooltip", _show_event_tooltip,
                                        tooltip_markup)
                 tooltip_target.connect("enter-notify-event", _trigger_event_tooltip)
-            top = ALL_DAY_EVENT_MARGIN if full_day else _timeline_y(start_minutes)
+            top = ALL_DAY_EVENT_MARGIN if full_day else _minute_to_y(start_minutes)
             height = (ALL_DAY_HEIGHT - 2 * ALL_DAY_EVENT_MARGIN if full_day else
                       max(1, _minute_to_y(end_minutes) - _minute_to_y(start_minutes)))
             self.event_layer.put(btn, 0, top)
