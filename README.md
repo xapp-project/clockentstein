@@ -34,6 +34,7 @@ python3-google-auth-httplib2
 python3-google-auth-oauthlib
 python3-googleapi
 python3-icalendar
+python3-setproctitle
 python3-xapp
 ```
 
@@ -51,6 +52,7 @@ python3-google-auth-httplib2
 python3-google-auth-oauthlib
 python3-googleapi
 python3-icalendar
+python3-setproctitle
 python3-xapp
 ```
 

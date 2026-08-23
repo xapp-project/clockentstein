@@ -15,6 +15,7 @@ Build-Depends:
  python3-google-auth-oauthlib,
  python3-googleapi,
  python3-icalendar,
+ python3-setproctitle,
  python3-xapp,
 Standards-Version: 4.6.2
 Rules-Requires-Root: no
@@ -32,6 +33,7 @@ Depends:
  python3-google-auth-oauthlib,
  python3-googleapi,
  python3-icalendar,
+ python3-setproctitle,
  python3-xapp,
 Description: Calendar application with local, Google and CalDAV support
  Clockenstein Calendar lets you manage multiple calendars. It supports local

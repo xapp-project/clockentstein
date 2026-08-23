@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import os
 import sys
+from setproctitle import setproctitle
 import gi
 
 gi.require_version("Gtk", "3.0")
@@ -35,6 +36,7 @@ def _activate(application):
 
 
 def main():
+    setproctitle("clockenstein-calendar")
     GLib.set_prgname("org.x.clockenstein.Calendar")
     GLib.set_application_name(_("Calendar"))
     application = Gtk.Application(
