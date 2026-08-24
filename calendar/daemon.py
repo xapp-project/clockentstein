@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+import argparse
 import datetime
 import signal
 
@@ -28,7 +29,8 @@ INTERFACE_XML = f"""
 
 
 class CalendarDaemon:
-    def __init__(self):
+    def __init__(self, verbose=False):
+        self.verbose = verbose
         self.connection = None
         self.registration_id = 0
         self.refreshing = False
@@ -36,19 +38,22 @@ class CalendarDaemon:
         self.node_info = Gio.DBusNodeInfo.new_for_xml(INTERFACE_XML)
 
     def run(self):
+        self._log(f"Starting; requesting {BUS_NAME}")
         Gio.bus_own_name(
             Gio.BusType.SESSION,
             BUS_NAME,
             Gio.BusNameOwnerFlags.NONE,
             self._bus_acquired,
             self._name_acquired,
-            lambda _connection, _name: self.loop.quit(),
+            self._name_lost,
         )
         signal.signal(signal.SIGINT, lambda _signum, _frame: self.loop.quit())
         signal.signal(signal.SIGTERM, lambda _signum, _frame: self.loop.quit())
         self.loop.run()
+        self._log("Stopped")
 
     def _bus_acquired(self, connection, _name):
+        self._log("Connected to the session bus")
         self.connection = connection
         self.registration_id = connection.register_object(
             BUS_PATH,
@@ -59,16 +64,23 @@ class CalendarDaemon:
         )
 
     def _name_acquired(self, _connection, _name):
+        self._log(f"Acquired {BUS_NAME}")
         GLib.timeout_add_seconds(REFRESH_INTERVAL_SECONDS, self._refresh_timeout)
         self._refresh_remote()
+
+    def _name_lost(self, _connection, _name):
+        self._log(f"Could not own {BUS_NAME}; another instance may be running")
+        self.loop.quit()
 
     def _handle_method_call(self, _connection, _sender, _path, _interface,
                             method, parameters, invocation):
         if method == "GetEvents":
             since, until = parameters.unpack()
             events = self._events_for_range(since, until)
+            self._log(f"GetEvents({since}, {until}) -> {len(events)} event(s)")
             invocation.return_value(GLib.Variant("(a(sssbxxx))", (events,)))
         elif method == "NotifyChanged":
+            self._log("NotifyChanged()")
             self._emit_changed()
             invocation.return_value(None)
 
@@ -105,17 +117,24 @@ class CalendarDaemon:
     @run_async
     def _refresh_remote(self):
         if self.refreshing:
+            self._log("Skipping refresh because one is already running")
             return
         self.refreshing = True
         store = CalendarManager()
         if not store.has_remote_accounts:
+            self._log("No remote accounts to refresh")
             self.refreshing = False
             return
         today = datetime.date.today()
         start = today - datetime.timedelta(days=31)
         end = today + datetime.timedelta(days=365)
+        self._log(f"Refreshing remote calendars from {start} through {end}")
         try:
-            store.refresh_remote(start, end)
+            errors = store.refresh_remote(start, end)
+            if errors:
+                self._log("Refresh completed with errors: " + "; ".join(errors))
+            else:
+                self._log("Refresh completed")
         finally:
             self._refresh_finished()
 
@@ -126,8 +145,16 @@ class CalendarDaemon:
 
     def _emit_changed(self):
         if self.connection:
+            self._log("Emitting Changed")
             self.connection.emit_signal(None, BUS_PATH, BUS_INTERFACE, "Changed", None)
+
+    def _log(self, message):
+        if self.verbose:
+            print(f"clockenstein-calendar-daemon: {message}", flush=True)
 
 
 if __name__ == "__main__":
-    CalendarDaemon().run()
+    parser = argparse.ArgumentParser(description="Clockenstein calendar service")
+    parser.add_argument("-v", "--verbose", action="store_true")
+    arguments = parser.parse_args()
+    CalendarDaemon(verbose=arguments.verbose).run()
