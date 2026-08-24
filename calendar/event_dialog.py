@@ -199,17 +199,6 @@ class EventDialog(Gtk.Dialog):
         scroll.add(self.desc_view)
         grid.attach(scroll, 1, 6, 2, 1)
 
-        grid.attach(lbl(_("Notification")), 0, 7, 1, 1)
-        self.notification_combo = Gtk.ComboBoxText()
-        for minutes, label in ((-1, _("Off")), (0, _("At event time")),
-                               (5, _("5 minutes before")), (10, _("10 minutes before")),
-                               (15, _("15 minutes before")), (30, _("30 minutes before")),
-                               (60, _("1 hour before")), (1440, _("1 day before")),
-                               (10080, _("1 week before"))):
-            self.notification_combo.append(str(minutes), label)
-        self.notification_combo.set_active_id("-1")
-        grid.attach(self.notification_combo, 1, 7, 2, 1)
-
         self.status_label = Gtk.Label(label="")
         self.status_label.get_style_context().add_class("error")
         box.pack_start(self.status_label, False, False, 0)
@@ -237,15 +226,6 @@ class EventDialog(Gtk.Dialog):
         self.start_minute.set_value(start_time.minute)
         self.end_hour.set_value(end_time.hour)
         self.end_minute.set_value(end_time.minute)
-
-        notification = ev.get("notification_minutes")
-        notification_id = "-1" if notification is None else str(notification)
-        if not self.notification_combo.set_active_id(notification_id):
-            self.notification_combo.append(notification_id,
-                                           _("%d minutes before") % notification)
-            self.notification_combo.set_active_id(notification_id)
-        notification_editable = self.is_new or ev.get("provider", "local") == "local"
-        self.notification_combo.set_sensitive(self.editable and notification_editable)
 
         self._on_allday_toggled(self.allday_switch, None)
 
@@ -291,8 +271,7 @@ class EventDialog(Gtk.Dialog):
 
     def _set_form_sensitive(self, sensitive):
         for widget in (self.title_entry, self.allday_switch, self.date_picker, self.end_date_picker,
-                       self.start_time, self.end_time, self.location_entry, self.desc_view,
-                       self.notification_combo):
+                       self.start_time, self.end_time, self.location_entry, self.desc_view):
             widget.set_sensitive(sensitive)
 
     def _on_response(self, _dialog, response):
@@ -326,8 +305,6 @@ class EventDialog(Gtk.Dialog):
             "date_end":    end_date,
             "time_start":  time_start,
             "time_end":    time_end,
-            "notification_minutes": (None if self.notification_combo.get_active_id() == "-1"
-                                     else int(self.notification_combo.get_active_id())),
         }
         calendar = self.calendar_options[self.calendar_combo.get_active()]
         if (calendar.get("provider") == "google"

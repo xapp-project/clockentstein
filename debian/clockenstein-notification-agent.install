@@ -1,0 +1,5 @@
+etc/xdg/autostart/clockenstein-notification-agent.desktop
+usr/bin/clockenstein-notification-agent
+usr/lib/systemd/user/clockenstein-notification-agent.service
+usr/share/clockenstein/agent/main.py
+usr/share/clockenstein/agent/notification.oga

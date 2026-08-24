@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+#DEBHELPER#
+
+if [ "$1" = "configure" ] && [ -z "$DPKG_ROOT" ]; then
+    deb-systemd-invoke --user daemon-reload >/dev/null || true
+    deb-systemd-invoke --user restart clockenstein-notification-agent.service >/dev/null || true
+fi
+
+exit 0

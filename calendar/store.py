@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from icalendar import Alarm, Calendar, Event
+from icalendar import Calendar, Event
 from xapp.util import l10n
 
 _ = l10n("clockenstein")
@@ -281,13 +281,6 @@ def _apply_data(ev: Event, data: dict):
         tz = datetime.datetime.now().astimezone().tzinfo
         ev.add("dtstart", datetime.datetime.combine(date_start, data.get("time_start") or datetime.time(9)).replace(tzinfo=tz))
         ev.add("dtend", datetime.datetime.combine(date_end, data.get("time_end") or datetime.time(10)).replace(tzinfo=tz))
-    notification_minutes = data.get("notification_minutes")
-    if notification_minutes is not None:
-        alarm = Alarm()
-        alarm.add("action", "DISPLAY")
-        alarm.add("description", data.get("summary") or _("Untitled"))
-        alarm.add("trigger", -datetime.timedelta(minutes=int(notification_minutes)))
-        ev.add_component(alarm)
 
 
 def _component_to_dict(component) -> dict:
@@ -303,37 +296,4 @@ def _component_to_dict(component) -> dict:
     return {"uid": str(component.get("uid", "")), "summary": str(component.get("summary", "")),
             "location": str(component.get("location", "")), "description": str(component.get("description", "")),
             "all_day": all_day, "date_start": date_start, "date_end": date_end,
-            "time_start": time_start, "time_end": time_end,
-            "notification_minutes": _component_notification_minutes(component, dtstart)}
-
-
-def _component_notification_minutes(component, dtstart, now=None):
-    local_tz = datetime.datetime.now().astimezone().tzinfo
-    if isinstance(dtstart, datetime.datetime):
-        event_start = dtstart if dtstart.tzinfo else dtstart.replace(tzinfo=local_tz)
-        event_start = event_start.astimezone(local_tz)
-    else:
-        event_start = datetime.datetime.combine(dtstart, datetime.time.min, local_tz)
-    now = now or datetime.datetime.now(local_tz)
-    if now.tzinfo is None:
-        now = now.replace(tzinfo=local_tz)
-    candidates = []
-    for alarm in component.subcomponents:
-        if alarm.name != "VALARM" or str(alarm.get("action", "")).upper() != "DISPLAY":
-            continue
-        trigger = alarm.get("trigger")
-        if trigger is None:
-            continue
-        value = trigger.dt
-        if isinstance(value, datetime.timedelta):
-            trigger_at = event_start + value
-            minutes = max(0, round(-value.total_seconds() / 60))
-        elif isinstance(value, datetime.datetime):
-            trigger_at = value if value.tzinfo else value.replace(tzinfo=local_tz)
-            trigger_at = trigger_at.astimezone(local_tz)
-            minutes = max(0, round((event_start - trigger_at).total_seconds() / 60))
-        else:
-            continue
-        if trigger_at >= now:
-            candidates.append((trigger_at, minutes))
-    return min(candidates, default=(None, None), key=lambda item: item[0])[1]
+            "time_start": time_start, "time_end": time_end}

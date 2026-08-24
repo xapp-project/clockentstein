@@ -25,6 +25,15 @@ class CalDAVBackend:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.accounts_file = self.data_dir / "accounts.json"
         self.accounts = self._read_json(self.accounts_file, [])
+        cache_changed = False
+        for account in self.accounts:
+            for event in account.get("events", []):
+                sanitized = _without_alarms(event.get("ical", ""))
+                if sanitized != event.get("ical", ""):
+                    event["ical"] = sanitized
+                    cache_changed = True
+        if cache_changed:
+            self._save()
         self._clients = {}
         self._calendars = {}
         self._errors = {}
@@ -176,7 +185,7 @@ class CalDAVBackend:
                         if isinstance(payload, bytes):
                             payload = payload.decode("utf-8")
                         fetched.append({"calendar_id": info["id"], "url": str(remote_event.url),
-                                        "ical": payload})
+                                        "ical": _without_alarms(payload)})
                     info["last_sync"] = int(datetime.datetime.now().timestamp())
                     info["sync_error"] = ""
                 if target_calendar_id:
@@ -212,7 +221,7 @@ class CalDAVBackend:
         self._require_calendar(data["account_id"], data["calendar_id"])
         parent = self._require_calendar(data["account_id"], data["calendar_id"])
         remote = caldav.Event(client=self._clients[data["account_id"]], parent=parent,
-                             url=cached["url"], data=_event_ical(data, uid, _cached_subcomponents(cached)))
+                             url=cached["url"], data=_event_ical(data, uid))
         remote.save()
         self._cache_remote(data["account_id"], data["calendar_id"], remote, cached["url"])
         return data
@@ -261,7 +270,8 @@ class CalDAVBackend:
         url = str(remote.url)
         account["events"] = [e for e in account.get("events", [])
                              if e.get("url") not in (url, old_url)]
-        account["events"].append({"calendar_id": calendar_id, "url": url, "ical": payload})
+        account["events"].append({"calendar_id": calendar_id, "url": url,
+                                  "ical": _without_alarms(payload)})
         self._save()
 
     @staticmethod
@@ -346,7 +356,7 @@ class CalDAVBackend:
             return default
 
 
-def _event_ical(data, uid=None, subcomponents=None):
+def _event_ical(data, uid=None):
     calendar = Calendar()
     calendar.add("prodid", "-//Clockenstein//EN")
     calendar.add("version", "2.0")
@@ -355,19 +365,19 @@ def _event_ical(data, uid=None, subcomponents=None):
         f"{datetime.datetime.now().isoformat()}:{data.get('summary', '')}".encode()).hexdigest())
     event.add("dtstamp", datetime.datetime.now(datetime.timezone.utc))
     _apply_data(event, data)
-    if subcomponents is not None:
-        event.subcomponents = subcomponents
     calendar.add_component(event)
     return calendar.to_ical().decode("utf-8")
 
 
-def _cached_subcomponents(raw):
+def _without_alarms(payload):
     try:
-        component = next(c for c in Calendar.from_ical(raw["ical"]).walk()
-                         if c.name == "VEVENT")
-        return list(component.subcomponents)
+        calendar = Calendar.from_ical(payload)
+        for component in calendar.walk("VEVENT"):
+            component.subcomponents = [child for child in component.subcomponents
+                                       if child.name != "VALARM"]
+        return calendar.to_ical().decode("utf-8")
     except Exception:
-        return []
+        return payload
 
 
 def _cached_uid(raw):

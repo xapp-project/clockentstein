@@ -277,7 +277,7 @@ class GoogleBackend:
         self._validate_event_range(data)
         service = self._require_service(data["account_id"])
         raw = service.events().patch(calendarId=data["calendar_id"], eventId=uid,
-                                     body=event_dict_to_google(data, include_reminders=False)).execute()
+                                     body=event_dict_to_google(data)).execute()
         raw["_calendar_id"] = data["calendar_id"]
         self._upsert_cached(data["account_id"], raw)
         return raw
@@ -387,7 +387,6 @@ class GoogleBackend:
         preferences = {c["id"]: c for c in old}
         result = [{"id": c["id"], "name": c.get("summary", c["id"]),
                  "color": c.get("backgroundColor", "#4285f4"),
-                 "default_reminders": c.get("defaultReminders", []),
                  "access_role": c.get("accessRole", "reader"),
                  "primary": c.get("primary", False),
                  "visible": preferences.get(c["id"], {}).get("visible", c.get("selected", True)),
@@ -451,16 +450,10 @@ def google_event_to_dict(raw, calendar, account, online):
         date_start, date_end = start_dt.date(), end_dt.date()
         time_start, time_end = start_dt.time().replace(tzinfo=None), end_dt.time().replace(tzinfo=None)
     writable = calendar.get("access_role") in ("writer", "owner")
-    reminders = raw.get("reminders", {})
-    reminder_items = (calendar.get("default_reminders", [])
-                      if reminders.get("useDefault") else reminders.get("overrides", []))
-    notification_minutes = _google_notification_minutes(
-        reminder_items, date_start, time_start)
     return {"uid": raw.get("id", ""), "summary": raw.get("summary") or _("Untitled"),
             "location": raw.get("location", ""), "description": raw.get("description", ""),
             "all_day": all_day, "date_start": date_start, "date_end": date_end,
-            "time_start": time_start, "time_end": time_end,
-            "notification_minutes": notification_minutes, "provider": "google",
+            "time_start": time_start, "time_end": time_end, "provider": "google",
             "account_id": account["id"], "calendar_id": calendar["id"],
             "calendar_name": calendar.get("name", calendar["id"]),
             "calendar_color": calendar.get("color", "#4285f4"),
@@ -479,7 +472,7 @@ def google_event_fits_sync_range(calendar, date_start, date_end, today=None):
     return date_start >= synced_start and date_end <= synced_end
 
 
-def event_dict_to_google(data, include_reminders=True):
+def event_dict_to_google(data):
     body = {"summary": data.get("summary", ""), "location": data.get("location", ""),
             "description": data.get("description", "")}
     if data.get("all_day", True):
@@ -491,34 +484,7 @@ def event_dict_to_google(data, include_reminders=True):
         end = datetime.datetime.combine(data.get("date_end", data["date_start"]), data["time_end"], tz)
         body["start"] = {"dateTime": start.isoformat()}
         body["end"] = {"dateTime": end.isoformat()}
-    if include_reminders:
-        notification_minutes = data.get("notification_minutes")
-        body["reminders"] = {
-            "useDefault": False,
-            "overrides": ([] if notification_minutes is None else
-                          [{"method": "popup", "minutes": int(notification_minutes)}]),
-        }
     return body
-
-
-def _google_notification_minutes(reminders, date_start, time_start, now=None):
-    local_tz = datetime.datetime.now().astimezone().tzinfo
-    event_start = datetime.datetime.combine(date_start, time_start or datetime.time.min, local_tz)
-    now = now or datetime.datetime.now(local_tz)
-    if now.tzinfo is None:
-        now = now.replace(tzinfo=local_tz)
-    candidates = []
-    for reminder in reminders or []:
-        if reminder.get("method") != "popup":
-            continue
-        try:
-            minutes = int(reminder["minutes"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        trigger_at = event_start - datetime.timedelta(minutes=minutes)
-        if trigger_at >= now:
-            candidates.append((trigger_at, minutes))
-    return min(candidates, default=(None, None), key=lambda item: item[0])[1]
 
 
 def _parse_datetime(value):

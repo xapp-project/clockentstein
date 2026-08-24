@@ -6,6 +6,7 @@ bindir = get_option('bindir')
 clockenstein_dir = join_paths(prefix, datadir, 'clockenstein')
 calendar_dir = join_paths(clockenstein_dir, 'calendar')
 daemon_dir = join_paths(clockenstein_dir, 'daemon')
+agent_dir = join_paths(clockenstein_dir, 'agent')
 systemd_user_unit_dir = join_paths(prefix, 'lib', 'systemd', 'user')
 
 install_data(
@@ -37,6 +38,12 @@ custom_target('clockenstein_main_window_versioned',
 )
 
 install_data(
+  'agent/main.py',
+  'data/notification.oga',
+  install_dir: agent_dir,
+)
+
+install_data(
   'calendar/backends/google.py',
   'calendar/backends/caldav.py',
   'calendar/backends/google.json',
@@ -60,6 +67,7 @@ install_data(
 launcher_conf = configuration_data()
 launcher_conf.set('calendar_dir', calendar_dir)
 launcher_conf.set('daemon_dir', daemon_dir)
+launcher_conf.set('agent_dir', agent_dir)
 configure_file(
   input: 'data/clockenstein-calendar.in',
   output: 'clockenstein-calendar',
@@ -72,6 +80,15 @@ configure_file(
 configure_file(
   input: 'data/clockenstein-daemon.in',
   output: 'clockenstein-daemon',
+  configuration: launcher_conf,
+  install: true,
+  install_dir: bindir,
+  install_mode: 'rwxr-xr-x',
+)
+
+configure_file(
+  input: 'data/clockenstein-notification-agent.in',
+  output: 'clockenstein-notification-agent',
   configuration: launcher_conf,
   install: true,
   install_dir: bindir,
@@ -96,9 +113,23 @@ configure_file(
   install_dir: systemd_user_unit_dir,
 )
 
+configure_file(
+  input: 'data/clockenstein-notification-agent.service.in',
+  output: 'clockenstein-notification-agent.service',
+  configuration: service_conf,
+  install: true,
+  install_dir: systemd_user_unit_dir,
+)
+
 install_data(
   'data/clockenstein-daemon.desktop.in',
   rename: 'clockenstein-daemon.desktop',
+  install_dir: join_paths(get_option('sysconfdir'), 'xdg', 'autostart'),
+)
+
+install_data(
+  'data/clockenstein-notification-agent.desktop.in',
+  rename: 'clockenstein-notification-agent.desktop',
   install_dir: join_paths(get_option('sysconfdir'), 'xdg', 'autostart'),
 )
 

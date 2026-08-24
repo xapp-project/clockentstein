@@ -8,7 +8,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "calendar"))
 from unittest.mock import patch
 
-from backends.caldav import CalDAVBackend, CalDAVUnavailable, _event_ical
+from backends.caldav import CalDAVBackend, CalDAVUnavailable, _event_ical, _without_alarms
 
 
 class FakeCalendar:
@@ -53,15 +53,24 @@ class CalDAVBackendTests(unittest.TestCase):
             self.assertTrue(event["cached"])
             self.assertFalse(event["editable"])
 
-    def test_caldav_event_contains_one_display_alarm(self):
-        """A new CalDAV event serializes Clockenstein's single notification as VALARM."""
+    def test_caldav_event_does_not_create_an_alarm(self):
+        """Clockenstein's universal notification is not stored in CalDAV."""
         payload = _event_ical({"summary": "Alert", "all_day": False,
                                "date_start": datetime.date.today() + datetime.timedelta(days=2),
                                "date_end": datetime.date.today() + datetime.timedelta(days=2),
-                               "time_start": datetime.time(9), "time_end": datetime.time(10),
-                               "notification_minutes": 15})
-        self.assertEqual(payload.count("BEGIN:VALARM"), 1)
-        self.assertIn("TRIGGER:-PT15M", payload)
+                               "time_start": datetime.time(9), "time_end": datetime.time(10)})
+        self.assertNotIn("BEGIN:VALARM", payload)
+
+    def test_remote_caldav_alarms_are_removed_from_cached_data(self):
+        """Remote alarms are ignored rather than retained in Clockenstein's cache."""
+        payload = _event_ical({"summary": "Alert", "all_day": False,
+                               "date_start": datetime.date.today(),
+                               "date_end": datetime.date.today(),
+                               "time_start": datetime.time(9), "time_end": datetime.time(10)})
+        payload = payload.replace(
+            "END:VEVENT", "BEGIN:VALARM\r\nACTION:AUDIO\r\nTRIGGER:-PT10M\r\nEND:VALARM\r\nEND:VEVENT"
+        )
+        self.assertNotIn("BEGIN:VALARM", _without_alarms(payload))
 
     def test_plain_http_is_rejected(self):
         """CalDAV refuses connections that could transmit credentials over HTTP."""

@@ -1,0 +1,10 @@
+[Unit]
+Description=Clockenstein notification agent
+
+[Service]
+Type=simple
+ExecStart=@bindir@/clockenstein-notification-agent
+Restart=on-failure
+RestartSec=2
+StandardOutput=append:%h/.xsession-errors
+StandardError=append:%h/.xsession-errors

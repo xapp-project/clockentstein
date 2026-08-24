@@ -4,5 +4,20 @@
     <key name="verbose" type="b">
       <default>false</default>
     </key>
+    <key name="notification-minutes" type="u">
+      <default>10</default>
+      <range min="0" max="525600"/>
+      <summary>Event notification lead time</summary>
+      <description>
+        Number of minutes before every event when the daemon emits a reminder.
+      </description>
+    </key>
+    <key name="notification-muted" type="b">
+      <default>false</default>
+      <summary>Mute event reminder sounds</summary>
+      <description>
+        Whether notification agents should suppress event reminder sounds.
+      </description>
+    </key>
   </schema>
 </schemalist>

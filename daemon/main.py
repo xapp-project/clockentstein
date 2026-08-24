@@ -22,8 +22,10 @@ from store import CalendarManager
 CALDAV_REFRESH_INTERVAL_SECONDS = 15 * 60
 GOOGLE_REFRESH_INTERVAL_SECONDS = 2 * 60 * 60
 GOOGLE_REFRESH_EVERY = GOOGLE_REFRESH_INTERVAL_SECONDS // CALDAV_REFRESH_INTERVAL_SECONDS
+REMINDER_CHECK_INTERVAL_SECONDS = 30
 SETTINGS_SCHEMA = "org.x.clockenstein.daemon"
 VERBOSE_KEY = "verbose"
+NOTIFICATION_MINUTES_KEY = "notification-minutes"
 VERSION = "__PROJECT_VERSION__"
 
 INTERFACE_XML = f"""
@@ -50,6 +52,16 @@ INTERFACE_XML = f"""
       <arg type="x" name="until" direction="in"/>
     </method>
     <signal name="Changed"/>
+    <signal name="Reminder">
+      <arg type="s" name="uid"/>
+      <arg type="s" name="summary"/>
+      <arg type="s" name="location"/>
+      <arg type="s" name="description"/>
+      <arg type="s" name="calendar_name"/>
+      <arg type="s" name="calendar_color"/>
+      <arg type="x" name="start"/>
+      <arg type="b" name="all_day"/>
+    </signal>
   </interface>
 </node>
 """
@@ -66,6 +78,8 @@ class ClockensteinDaemon:
         self.refresh_ticks = 0
         self.google_refresh_due = False
         self.refresh_queue = []
+        self.last_reminder_check = None
+        self.reminder_events = []
         self.loop = GLib.MainLoop()
         self.node_info = Gio.DBusNodeInfo.new_for_xml(INTERFACE_XML)
 
@@ -107,6 +121,11 @@ class ClockensteinDaemon:
 
     def _name_acquired(self, _connection, _name):
         self._log(f"Acquired {BUS_NAME}")
+        self.last_reminder_check = datetime.datetime.now().astimezone()
+        self._reload_reminder_events()
+        GLib.timeout_add_seconds(
+            REMINDER_CHECK_INTERVAL_SECONDS, self._reminder_timeout
+        )
         GLib.timeout_add_seconds(CALDAV_REFRESH_INTERVAL_SECONDS, self._refresh_timeout)
         self._request_refresh(refresh_google=True, refresh_caldav=True)
 
@@ -123,6 +142,7 @@ class ClockensteinDaemon:
             invocation.return_value(GLib.Variant("(a(sssbxxx))", (events,)))
         elif method == "NotifyChanged":
             self._log("NotifyChanged()")
+            self._reload_reminder_events()
             self._emit_changed()
             invocation.return_value(None)
         elif method == "RefreshCalendar":
@@ -202,6 +222,43 @@ class ClockensteinDaemon:
                               refresh_caldav=True)
         return GLib.SOURCE_CONTINUE
 
+    def _reminder_timeout(self):
+        now = datetime.datetime.now().astimezone()
+        since = self.last_reminder_check or now
+        self.last_reminder_check = now
+        try:
+            minutes = self.settings.get_uint(NOTIFICATION_MINUTES_KEY)
+            for event in _due_notifications(self.reminder_events, since, now, minutes):
+                self._emit_reminder(event)
+        except Exception as exc:
+            self._log(f"Could not check reminders: {exc}")
+        return GLib.SOURCE_CONTINUE
+
+    def _reload_reminder_events(self):
+        try:
+            self.reminder_events = CalendarManager().get_events()
+        except Exception as exc:
+            self._log(f"Could not reload reminders: {exc}")
+
+    def _emit_reminder(self, event):
+        if not self.connection:
+            return
+        uid = ":".join((event.get("provider", "local"),
+                        event.get("account_id", "local"),
+                        event.get("calendar_id", ""), event["uid"]))
+        parameters = GLib.Variant(
+            "(ssssssxb)",
+            (uid, event.get("summary", ""), event.get("location", ""),
+             event.get("description", ""),
+             event.get("calendar_name", ""),
+             event.get("calendar_color", "#2aa198"),
+             int(_event_start(event).timestamp()), bool(event.get("all_day"))),
+        )
+        self._log(f"Emitting Reminder for {uid}")
+        self.connection.emit_signal(
+            None, BUS_PATH, BUS_INTERFACE, "Reminder", parameters
+        )
+
     def _request_refresh(self, refresh_google=False, refresh_caldav=True,
                          target=None, date_range=None):
         if self.refreshing:
@@ -275,6 +332,7 @@ class ClockensteinDaemon:
     @run_idle
     def _refresh_finished(self):
         self.refreshing = False
+        self._reload_reminder_events()
         self._emit_changed()
         if self.refresh_queue:
             refresh_google, refresh_caldav, target, date_range = self.refresh_queue.pop(0)
@@ -288,6 +346,26 @@ class ClockensteinDaemon:
     def _log(self, message):
         if self.verbose:
             print(f"clockenstein-daemon: {message}", flush=True)
+
+
+def _event_start(event):
+    local_tz = datetime.datetime.now().astimezone().tzinfo
+    return datetime.datetime.combine(
+        event["date_start"], event.get("time_start") or datetime.time.min, local_tz
+    )
+
+
+def _due_notifications(events, since, until, minutes):
+    """Return events whose universal notification became due in the interval."""
+    if until < since:
+        return []
+    due = []
+    for event in events:
+        start = _event_start(event)
+        trigger = start - datetime.timedelta(minutes=minutes)
+        if since < trigger <= until:
+            due.append(event)
+    return sorted(due, key=_event_start)
 
 
 if __name__ == "__main__":

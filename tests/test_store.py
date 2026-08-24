@@ -67,18 +67,6 @@ class LocalStoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.store.delete_calendar("personal")
 
-    def test_local_event_stores_one_display_notification(self):
-        """A local event round-trips its single display notification."""
-        personal = self.store.list_calendars()[0]
-        event = self.store.create_event({
-            "calendar_id": personal["id"], "summary": "Alert", "all_day": False,
-            "date_start": datetime.date.today() + datetime.timedelta(days=2),
-            "date_end": datetime.date.today() + datetime.timedelta(days=2),
-            "time_start": datetime.time(9), "time_end": datetime.time(10),
-            "notification_minutes": 30,
-        })
-        self.assertEqual(event["notification_minutes"], 30)
-
     def test_query_returns_event_overlapping_from_previous_day(self):
         """Date queries include multiday events that began before the range."""
         personal = self.store.list_calendars()[0]
@@ -330,29 +318,23 @@ class GoogleMappingTests(unittest.TestCase):
                                      "date_end": datetime.date(2026, 8, 25)})
         self.assertEqual(body["end"]["date"], "2026-08-26")
 
-    def test_new_google_events_override_defaults_with_notification_off(self):
-        """New Google events explicitly disable calendar-default reminders."""
+    def test_google_event_writes_do_not_include_reminders(self):
+        """Clockenstein leaves Google reminder behavior to Google."""
         body = event_dict_to_google({"summary": "Quiet", "all_day": True,
                                      "date_start": datetime.date(2027, 8, 22),
                                      "date_end": datetime.date(2027, 8, 22)})
-        self.assertEqual(body["reminders"], {"useDefault": False, "overrides": []})
-        self.assertNotIn("reminders", event_dict_to_google(
-            {"summary": "Edit", "all_day": True,
-             "date_start": datetime.date(2027, 8, 22),
-             "date_end": datetime.date(2027, 8, 22)}, include_reminders=False))
+        self.assertNotIn("reminders", body)
 
-    def test_google_calendar_defaults_resolve_to_one_upcoming_notification(self):
-        """Google defaults become the chronologically earliest popup still to come."""
+    def test_google_event_reads_ignore_remote_reminders(self):
+        """Remote reminders are not copied into Clockenstein's event model."""
         start = datetime.date.today() + datetime.timedelta(days=30)
         raw = {"id": "g1", "summary": "Future", "start": {"date": start.isoformat()},
                "end": {"date": (start + datetime.timedelta(days=1)).isoformat()},
                "reminders": {"useDefault": True}}
         calendar = {"id": "primary", "name": "Personal", "color": "#123456",
-                    "access_role": "owner", "default_reminders": [
-                        {"method": "popup", "minutes": 60},
-                        {"method": "popup", "minutes": 1440}]}
+                    "access_role": "owner"}
         event = google_event_to_dict(raw, calendar, {"id": "me.test"}, True)
-        self.assertEqual(event["notification_minutes"], 1440)
+        self.assertNotIn("notification_minutes", event)
 
     def test_offline_google_event_is_cached_and_read_only(self):
         """Cached Google events are marked unavailable for offline editing."""

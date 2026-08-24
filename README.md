@@ -14,9 +14,8 @@ Calendar application for Linux desktops.
 
 `clockenstein-calendar` is the client application.
 
-`clockenstein-daemon` is the daemon which runs in the background, syncs the remote calendars, and is responsible for alarms.
-
-It is started at session login via XDG autostart and runs as a systemd user service which is respawned automatically when it dies. It can also be d-bus activated if a client requests it.
+`clockenstein-daemon` runs in the background, syncs remote calendars, schedules
+event reminders, and emits them over D-Bus.
 
 The daemon:
 
@@ -26,6 +25,11 @@ The daemon:
 - handles all interactions with remote (Google, Caldav) servers except for CRUD operations and accounts setup (which are handled by the client)
 - syncs remote events on startup and then on a regular basis
 - communicates to clients via DBUS to tell when something has `Changed` or to accept or queue refresh requests
+
+`clockenstein-notification-agent` runs in the backgrounds, and listens for reminder signals from the daemon. When it gets a signal, it
+displays a reminder window with dismiss and snooze buttons.
+
+Just like the daemon, it is started via XDG autostart, and it runs as a systemd user service which is respawned automatically when it dies.
 
 `tools/dbus-calendar-client.py` simulates an applet which shows calendar events (similar to the Cinnamon clock applet)
 
@@ -56,8 +60,6 @@ CalDav we sync extra ranges from the remote.
 ## TODO
 
 - Set up translations
-- Sync reminders info from caldav/google
-- Implement an alarm/reminder/notification service
 - Support repeating tasks
 - Implement time utilities (alarms, stopwatch, timers)
 - Set up a Google app (the Clockenstein prototype uses GOA's google app, it needs its own app before release)
@@ -68,6 +70,7 @@ CalDav we sync extra ranges from the remote.
 
 ```text
 gir1.2-gtk-3.0
+gir1.2-gsound-1.0
 gir1.2-secret-1
 python3
 python3-caldav
