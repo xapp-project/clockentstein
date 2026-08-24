@@ -9,6 +9,7 @@ from xapp.util import l10n
 _ = l10n("clockenstein")
 
 from store import CalendarManager
+from backends.google import google_event_fits_sync_range
 
 
 class _DatePicker(Gtk.MenuButton):
@@ -329,6 +330,13 @@ class EventDialog(Gtk.Dialog):
                                      else int(self.notification_combo.get_active_id())),
         }
         calendar = self.calendar_options[self.calendar_combo.get_active()]
+        if (calendar.get("provider") == "google"
+                and not google_event_fits_sync_range(calendar, date, end_date)):
+            self.status_label.set_text(
+                _("The event dates are outside the sync range for %s.")
+                % calendar.get("name", calendar.get("calendar_name", _("this calendar")))
+            )
+            return False
         data.update({"calendar_id": calendar.get("id", calendar.get("calendar_id")),
                      "provider": calendar.get("provider", "local"),
                      "account_id": calendar.get("account_id", "local")})

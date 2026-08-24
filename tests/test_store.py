@@ -7,7 +7,8 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "calendar"))
 
 from backends.google import (EVENTS_PAGE_SIZE, GoogleBackend, SCOPES,
-                             event_dict_to_google, google_event_to_dict)
+                             event_dict_to_google, google_event_fits_sync_range,
+                             google_event_to_dict)
 from store import LocalStore
 
 
@@ -102,6 +103,19 @@ class LocalStoreTests(unittest.TestCase):
 
 
 class GoogleMappingTests(unittest.TestCase):
+    def test_google_event_must_fit_calendar_sync_range(self):
+        today = datetime.date(2026, 8, 24)
+        calendar = {"sync_range": "restricted"}
+        self.assertTrue(google_event_fits_sync_range(
+            calendar, today, today + datetime.timedelta(days=93), today
+        ))
+        self.assertFalse(google_event_fits_sync_range(
+            calendar, today, today + datetime.timedelta(days=94), today
+        ))
+        self.assertFalse(google_event_fits_sync_range(
+            {"sync_range": "too-big"}, today, today, today
+        ))
+
     def test_google_event_pages_request_the_api_maximum(self):
         """Event pagination uses Google's largest authorized page size."""
         self.assertEqual(EVENTS_PAGE_SIZE, 2500)

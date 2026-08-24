@@ -21,6 +21,11 @@ EVENTS_PAGE_SIZE = 2500
 NORMAL_RANGE = (2 * 31, 2 * 365)
 LIMITED_RANGE = (31, 365)
 RESTRICTED_RANGE = (31, 3 * 31)
+SYNC_RANGES = {
+    "normal": NORMAL_RANGE,
+    "limited": LIMITED_RANGE,
+    "restricted": RESTRICTED_RANGE,
+}
 
 
 class GoogleUnavailable(RuntimeError):
@@ -235,6 +240,7 @@ class GoogleBackend:
         return errors
 
     def create_event(self, data):
+        self._validate_event_range(data)
         service = self._require_service(data["account_id"])
         body = event_dict_to_google(data)
         raw = service.events().insert(calendarId=data["calendar_id"], body=body).execute()
@@ -243,6 +249,7 @@ class GoogleBackend:
         return raw
 
     def update_event(self, uid, data):
+        self._validate_event_range(data)
         service = self._require_service(data["account_id"])
         raw = service.events().patch(calendarId=data["calendar_id"], eventId=uid,
                                      body=event_dict_to_google(data, include_reminders=False)).execute()
@@ -263,6 +270,20 @@ class GoogleBackend:
         if not service:
             raise GoogleUnavailable(_("This Google account is offline. Its cached events are read-only."))
         return service
+
+    def _validate_event_range(self, data):
+        account = next((account for account in self.accounts
+                        if account["id"] == data["account_id"]), None)
+        calendar = next((calendar for calendar in account.get("calendars", [])
+                         if calendar["id"] == data["calendar_id"]), None) if account else None
+        if calendar is None:
+            raise GoogleUnavailable(_("Google calendar not found."))
+        if not google_event_fits_sync_range(
+                calendar, data["date_start"], data.get("date_end", data["date_start"])):
+            raise GoogleUnavailable(
+                _("The event dates are outside the sync range for %s.")
+                % calendar.get("name", calendar["id"])
+            )
 
     def _upsert_cached(self, account_id, raw):
         account = next(a for a in self.accounts if a["id"] == account_id)
@@ -409,7 +430,19 @@ def google_event_to_dict(raw, calendar, account, online):
             "account_id": account["id"], "calendar_id": calendar["id"],
             "calendar_name": calendar.get("name", calendar["id"]),
             "calendar_color": calendar.get("color", "#4285f4"),
+            "sync_range": calendar.get("sync_range", "normal"),
             "editable": bool(online and writable), "cached": not online}
+
+
+def google_event_fits_sync_range(calendar, date_start, date_end, today=None):
+    sync_range = calendar.get("sync_range", "normal")
+    if sync_range == "too-big":
+        return False
+    past_days, future_days = SYNC_RANGES.get(sync_range, NORMAL_RANGE)
+    today = today or datetime.date.today()
+    synced_start = today - datetime.timedelta(days=past_days)
+    synced_end = today + datetime.timedelta(days=future_days)
+    return date_start >= synced_start and date_end <= synced_end
 
 
 def event_dict_to_google(data, include_reminders=True):
