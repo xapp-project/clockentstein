@@ -713,19 +713,19 @@ class MainWindow(Gtk.Window):
         self._month_selected_date = self.current_date
         self._week_selected_date = self.current_date
         self._sync_mini_cal()
-        self._refresh(refresh_remote=self.store.has_remote_accounts)
+        self._refresh(refresh_caldav=self._caldav_navigation_needs_refresh())
 
     def _go_today(self):
-        self.focus_date(self.today, refresh_remote=self.store.has_remote_accounts)
+        self.focus_date(self.today, refresh_caldav=False)
 
-    def focus_date(self, date, refresh_remote=False):
+    def focus_date(self, date, refresh_remote=False, refresh_caldav=False):
         self.current_date = date
         self._month_selected_date = date
         self._week_selected_date = date
         self._month_week_offset = 0
         self._month_scroll_delta = 0
         self._sync_mini_cal()
-        self._refresh(refresh_remote=refresh_remote)
+        self._refresh(refresh_remote=refresh_remote, refresh_caldav=refresh_caldav)
 
     def _sync_mini_cal(self):
         self.mini_cal.set_date(self.current_date)
@@ -736,7 +736,7 @@ class MainWindow(Gtk.Window):
         self._week_selected_date = date
         self._month_week_offset = 0
         self._month_scroll_delta = 0
-        self._refresh(refresh_remote=self.store.has_remote_accounts)
+        self._refresh(refresh_caldav=self._caldav_navigation_needs_refresh())
 
     def _scroll_month(self, direction):
         if self._active_view != "Month":
@@ -753,7 +753,7 @@ class MainWindow(Gtk.Window):
         self._set_month_grid_start(start)
         self._week_selected_date = self.current_date
         self.mini_cal.set_date(self._month_selected_date)
-        self._refresh(refresh_remote=self.store.has_remote_accounts)
+        self._refresh(refresh_caldav=self._caldav_navigation_needs_refresh())
 
     def _select_month_date(self, date):
         start, _end = self._month_date_range()
@@ -837,18 +837,28 @@ class MainWindow(Gtk.Window):
         base = first - datetime.timedelta(days=first.weekday())
         self._month_week_offset = (start - base).days // 7
 
-    def _refresh(self, refresh_remote=False):
+    def _caldav_navigation_needs_refresh(self):
+        if not self.store.caldav.has_accounts:
+            return False
+        start, end = self._date_range()
+        today = datetime.date.today()
+        synced_start = today - datetime.timedelta(days=NORMAL_RANGE[0])
+        synced_end = today + datetime.timedelta(days=NORMAL_RANGE[1])
+        return start < synced_start or end > synced_end
+
+    def _refresh(self, refresh_remote=False, refresh_caldav=False):
         self._update_views()
         self._populate_calendar_list()
-        if refresh_remote and not self._refreshing:
+        if (refresh_remote or refresh_caldav) and not self._refreshing:
             self._set_refreshing(True)
             self._set_status(_("Connecting to online calendars…"))
             start, end = self._date_range()
-            self._refresh_worker(start, end)
+            self._refresh_worker(start, end, refresh_remote)
 
     @run_async
-    def _refresh_worker(self, start, end):
-        errors = self.store.refresh_remote(start, end)
+    def _refresh_worker(self, start, end, refresh_all=True):
+        errors = (self.store.refresh_remote(start, end) if refresh_all
+                  else self.store.caldav.refresh(start, end))
         self._remote_done(errors)
 
     @run_idle
