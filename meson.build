@@ -8,6 +8,8 @@ calendar_dir = join_paths(clockenstein_dir, 'calendar')
 
 install_data(
   'calendar/main.py',
+  'calendar/daemon.py',
+  'calendar/dbus.py',
   'calendar/formatting.py',
   'calendar/store.py',
   'calendar/event_dialog.py',
@@ -54,6 +56,33 @@ configure_file(
   install: true,
   install_dir: bindir,
   install_mode: 'rwxr-xr-x',
+)
+
+configure_file(
+  input: 'data/clockenstein-calendar-daemon.in',
+  output: 'clockenstein-calendar-daemon',
+  configuration: launcher_conf,
+  install: true,
+  install_dir: bindir,
+  install_mode: 'rwxr-xr-x',
+)
+
+service_conf = configuration_data()
+service_conf.set('bindir', join_paths(prefix, bindir))
+configure_file(
+  input: 'data/org.x.clockenstein.Calendar.Service.service.in',
+  output: 'org.x.clockenstein.Calendar.Service.service',
+  configuration: service_conf,
+  install: true,
+  install_dir: join_paths(get_option('datadir'), 'dbus-1', 'services'),
+)
+
+configure_file(
+  input: 'data/clockenstein-daemon.desktop.in',
+  output: 'clockenstein-daemon.desktop',
+  configuration: service_conf,
+  install: true,
+  install_dir: join_paths(get_option('sysconfdir'), 'xdg', 'autostart'),
 )
 
 subdir('data')

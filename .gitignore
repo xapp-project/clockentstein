@@ -1,3 +1,4 @@
 __pycache__/
 *.py[cod]
 debian/clockenstein-calendar
+debian/clockenstein-daemon

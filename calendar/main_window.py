@@ -10,6 +10,7 @@ from xapp.util import l10n
 _ = l10n("clockenstein")
 
 from event_dialog import EventDialog
+from dbus import notify_changed
 from formatting import capitalize_first, format_time
 from store import CalendarManager
 from views.colors import apply_tinted_event_color
@@ -456,6 +457,7 @@ class MainWindow(Gtk.Window):
             self._fill_calendar_box(calendar_box)
             self._populate_calendar_list()
             self._update_views()
+            notify_changed()
         dialog.destroy()
 
     def _remove_local_calendar(self, _button, cal, calendar_box, parent):
@@ -480,6 +482,7 @@ class MainWindow(Gtk.Window):
             self._fill_calendar_box(calendar_box)
             self._populate_calendar_list()
             self._update_views()
+            notify_changed()
 
     def _set_status(self, message=""):
         self.status_label.set_text(message)
@@ -489,6 +492,7 @@ class MainWindow(Gtk.Window):
         self.store.set_visible(cal["provider"], cal["id"], switch.get_active(), cal.get("account_id"))
         self._populate_calendar_list()
         self._update_views()
+        notify_changed()
 
     def _add_local_calendar(self, _button, parent=None):
         dialog = Gtk.Dialog(title=_("New Calendar"), transient_for=parent or self, modal=True)
@@ -509,6 +513,7 @@ class MainWindow(Gtk.Window):
         if dialog.run() == Gtk.ResponseType.OK and name.get_text().strip():
             self.store.create_calendar(name.get_text().strip(), color.get_rgba().to_string())
             self._populate_calendar_list()
+            notify_changed()
         dialog.destroy()
 
     def _connect_google(self, _button=None):
@@ -583,6 +588,7 @@ class MainWindow(Gtk.Window):
                 self.store.google.disconnect(account_id)
             else:
                 self.store.caldav.disconnect(account_id)
+            notify_changed()
             self._refresh(refresh_remote=False)
 
     def _navigate(self, direction):
@@ -678,6 +684,7 @@ class MainWindow(Gtk.Window):
     def _on_event_activated(self, event):
         dialog = EventDialog(self, store=self.store, event=event)
         if dialog.run() in (Gtk.ResponseType.OK, Gtk.ResponseType.REJECT):
+            notify_changed()
             self._refresh(refresh_remote=False)
         dialog.destroy()
 
@@ -691,6 +698,7 @@ class MainWindow(Gtk.Window):
         dialog = EventDialog(self, store=self.store, default_date=default_date or selected_date,
                              calendar_options=calendars)
         if dialog.run() == Gtk.ResponseType.OK:
+            notify_changed()
             self._refresh(refresh_remote=False)
         dialog.destroy()
 
@@ -739,6 +747,7 @@ class MainWindow(Gtk.Window):
         self._set_refreshing(False)
         self._update_views()
         self._populate_calendar_list()
+        notify_changed()
         if errors:
             self._set_status(
                 _("Some online calendars are disconnected (read-only).")

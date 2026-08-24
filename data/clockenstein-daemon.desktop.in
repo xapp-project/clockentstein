@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Clockenstein Daemon
+Comment=Refresh calendars and provide calendar events
+Exec=@bindir@/clockenstein-calendar-daemon
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
