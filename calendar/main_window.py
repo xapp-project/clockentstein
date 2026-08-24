@@ -610,13 +610,16 @@ class MainWindow(Gtk.Window):
         self._refresh(refresh_remote=self.store.has_remote_accounts)
 
     def _go_today(self):
-        self.current_date = self.today
-        self._month_selected_date = self.today
-        self._week_selected_date = self.today
+        self.focus_date(self.today, refresh_remote=self.store.has_remote_accounts)
+
+    def focus_date(self, date, refresh_remote=False):
+        self.current_date = date
+        self._month_selected_date = date
+        self._week_selected_date = date
         self._month_week_offset = 0
         self._month_scroll_delta = 0
         self._sync_mini_cal()
-        self._refresh(refresh_remote=self.store.has_remote_accounts)
+        self._refresh(refresh_remote=refresh_remote)
 
     def _sync_mini_cal(self):
         self.mini_cal.set_date(self.current_date)

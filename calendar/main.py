@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+import datetime
 import os
 import sys
 from setproctitle import setproctitle
@@ -35,15 +36,49 @@ def _activate(application):
     window.show_all()
 
 
+def _command_line(application, command_line):
+    arguments = [arg.decode() if isinstance(arg, bytes) else arg
+                 for arg in command_line.get_arguments()]
+    requested_date = None
+    index = 1
+    while index < len(arguments):
+        argument = arguments[index]
+        if argument.startswith("--date="):
+            value = argument.partition("=")[2]
+        elif argument == "--date":
+            if index + 1 >= len(arguments):
+                command_line.printerr(_("The --date option requires a date.\n"))
+                return 2
+            index += 1
+            value = arguments[index]
+        else:
+            index += 1
+            continue
+        try:
+            requested_date = datetime.date.fromisoformat(value)
+        except ValueError:
+            command_line.printerr(_("Invalid date: %s\n") % value)
+            return 2
+        index += 1
+
+    application.activate()
+    window = application.get_windows()[0]
+    if requested_date is not None:
+        window.focus_date(requested_date)
+    window.present()
+    return 0
+
+
 def main():
     setproctitle("clockenstein-calendar")
     GLib.set_prgname("org.x.clockenstein.Calendar")
     GLib.set_application_name(_("Calendar"))
     application = Gtk.Application(
         application_id="org.x.clockenstein.Calendar",
-        flags=Gio.ApplicationFlags.FLAGS_NONE,
+        flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE,
     )
     application.connect("activate", _activate)
+    application.connect("command-line", _command_line)
     return application.run(sys.argv)
 
 
