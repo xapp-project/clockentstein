@@ -704,35 +704,32 @@ class MainWindow(Gtk.Window):
         self._update_views()
         notify_changed()
 
-    def _refresh_calendar(self, _button, cal):
-        if self._refreshing:
-            return
-        self._set_refreshing(True)
-        self._set_status(_("Refreshing %s…") % cal["name"])
-        self._refresh_calendar_worker(cal)
+    def _refresh_calendar(self, button, cal):
+        button.set_sensitive(False)
+        button.set_tooltip_text(_("Refresh requested"))
+        self._set_status(_("Refresh requested for %s…") % cal["name"])
+        self._refresh_calendar_worker(cal, button)
 
     @run_async
-    def _refresh_calendar_worker(self, cal):
-        today = datetime.date.today()
-        start = today - datetime.timedelta(days=NORMAL_RANGE[0])
-        end = today + datetime.timedelta(days=NORMAL_RANGE[1])
-        if cal["provider"] == "google":
-            limited = (today - datetime.timedelta(days=LIMITED_RANGE[0]),
-                       today + datetime.timedelta(days=LIMITED_RANGE[1]))
-            restricted = (today - datetime.timedelta(days=RESTRICTED_RANGE[0]),
-                          today + datetime.timedelta(days=RESTRICTED_RANGE[1]))
-            errors = self.store.google.refresh(
-                start, end, limited, restricted,
-                target_account_id=cal.get("account_id"),
-                target_calendar_id=cal["id"],
+    def _refresh_calendar_worker(self, cal, button):
+        try:
+            connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+            connection.call_sync(
+                BUS_NAME, BUS_PATH, BUS_INTERFACE, "RefreshCalendar",
+                GLib.Variant("(sss)", (
+                    cal["provider"], cal.get("account_id", ""), cal["id"]
+                )),
+                None, Gio.DBusCallFlags.NONE, -1, None,
             )
-        else:
-            errors = self.store.caldav.refresh(
-                start, end,
-                target_account_id=cal.get("account_id"),
-                target_calendar_id=cal["id"],
-            )
-        self._remote_done(errors)
+        except GLib.Error as exc:
+            self._refresh_request_failed(str(exc), button)
+
+    @run_idle
+    def _refresh_request_failed(self, error, button):
+        if button.get_parent() is not None:
+            button.set_sensitive(True)
+            button.set_tooltip_text(_("Refresh this calendar"))
+        self._set_status(_("Could not request refresh: %s") % error)
 
     def _add_local_calendar(self, _button, parent=None):
         dialog = Gtk.Dialog(title=_("New Calendar"), transient_for=parent or self, modal=True)
@@ -765,11 +762,12 @@ class MainWindow(Gtk.Window):
     @run_async
     def _connect_worker(self, filename):
         try:
-            self.store.google.connect(filename, self._connection_progress)
-            start, end = self._date_range()
-            self._connection_progress(_("Downloading events…"))
-            errors = self.store.google.refresh(start, end)
-            self._remote_done(errors)
+            account_id = self.store.google.connect(filename, self._connection_progress)
+            self._connection_progress(_("Requesting initial synchronization…"))
+            self._call_daemon("RefreshAccount", GLib.Variant(
+                "(ss)", ("google", account_id)
+            ))
+            self._sync_request_accepted()
         except Exception as exc:
             self._remote_done([str(exc)])
 
@@ -805,11 +803,14 @@ class MainWindow(Gtk.Window):
     @run_async
     def _connect_caldav_worker(self, url, username, password):
         try:
-            self.store.caldav.connect(url, username, password, self._connection_progress)
-            start, end = self._date_range()
-            self._connection_progress(_("Downloading events…"))
-            errors = self.store.caldav.refresh(start, end)
-            self._remote_done(errors)
+            account_id = self.store.caldav.connect(
+                url, username, password, self._connection_progress
+            )
+            self._connection_progress(_("Requesting initial synchronization…"))
+            self._call_daemon("RefreshAccount", GLib.Variant(
+                "(ss)", ("caldav", account_id)
+            ))
+            self._sync_request_accepted()
         except Exception as exc:
             self._remote_done([str(exc)])
 
@@ -991,9 +992,41 @@ class MainWindow(Gtk.Window):
 
     @run_async
     def _refresh_worker(self, start, end, refresh_all=True):
-        errors = (self.store.refresh_remote(start, end) if refresh_all
-                  else self.store.caldav.refresh(start, end))
-        self._remote_done(errors)
+        try:
+            if refresh_all:
+                for provider in ("google", "caldav"):
+                    self._call_daemon("RefreshAccount", GLib.Variant(
+                        "(ss)", (provider, "")
+                    ))
+            else:
+                since = int(datetime.datetime.combine(
+                    start, datetime.time.min
+                ).astimezone().timestamp())
+                until = int(datetime.datetime.combine(
+                    end, datetime.time.max
+                ).astimezone().timestamp())
+                self._call_daemon("RefreshRange", GLib.Variant(
+                    "(sxx)", ("caldav", since, until)
+                ))
+            self._sync_request_accepted()
+        except GLib.Error as exc:
+            self._remote_done([str(exc)])
+
+    @staticmethod
+    def _call_daemon(method, parameters):
+        connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        connection.call_sync(
+            BUS_NAME, BUS_PATH, BUS_INTERFACE, method, parameters,
+            None, Gio.DBusCallFlags.NONE, -1, None,
+        )
+
+    @run_idle
+    def _sync_request_accepted(self):
+        self._set_refreshing(False)
+        self._set_status(_("Synchronization requested"))
+        self.store = CalendarManager()
+        self._update_views()
+        self._populate_calendar_list()
 
     @run_idle
     def _remote_done(self, errors):
