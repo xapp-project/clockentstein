@@ -6,4 +6,5 @@ usr/share/clockenstein/calendar/dbus.py
 usr/share/clockenstein/calendar/store.py
 usr/share/clockenstein/daemon/main.py
 usr/share/dbus-1/services/org.x.clockenstein.Calendar.Service.service
+usr/share/glib-2.0/schemas/org.x.clockenstein.daemon.gschema.xml
 usr/share/locale

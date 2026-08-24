@@ -1,5 +1,4 @@
 #!/usr/bin/python3
-import argparse
 import datetime
 import os
 import signal
@@ -20,6 +19,8 @@ from dbus import BUS_INTERFACE, BUS_NAME, BUS_PATH
 from store import CalendarManager
 
 REFRESH_INTERVAL_SECONDS = 15 * 60
+SETTINGS_SCHEMA = "org.x.clockenstein.daemon"
+VERBOSE_KEY = "verbose"
 VERSION = "__PROJECT_VERSION__"
 
 INTERFACE_XML = f"""
@@ -38,13 +39,24 @@ INTERFACE_XML = f"""
 
 
 class ClockensteinDaemon:
-    def __init__(self, verbose=False):
-        self.verbose = verbose
+    def __init__(self):
+        self.settings = Gio.Settings.new(SETTINGS_SCHEMA)
+        self.verbose = self.settings.get_boolean(VERBOSE_KEY)
+        self.settings.connect(f"changed::{VERBOSE_KEY}", self._verbose_changed)
         self.connection = None
         self.registration_id = 0
         self.refreshing = False
         self.loop = GLib.MainLoop()
         self.node_info = Gio.DBusNodeInfo.new_for_xml(INTERFACE_XML)
+
+    def _verbose_changed(self, settings, _key):
+        verbose = settings.get_boolean(VERBOSE_KEY)
+        if verbose:
+            self.verbose = True
+            self._log("Verbose logging enabled")
+        else:
+            self._log("Verbose logging disabled")
+            self.verbose = False
 
     def run(self):
         print(f"clockenstein-daemon: Starting version {VERSION}", flush=True)
@@ -165,7 +177,4 @@ class ClockensteinDaemon:
 
 if __name__ == "__main__":
     setproctitle("clockenstein-daemon")
-    parser = argparse.ArgumentParser(description="Clockenstein background service")
-    parser.add_argument("-v", "--verbose", action="store_true")
-    arguments = parser.parse_args()
-    ClockensteinDaemon(verbose=arguments.verbose).run()
+    ClockensteinDaemon().run()

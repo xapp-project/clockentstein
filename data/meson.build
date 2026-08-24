@@ -3,6 +3,7 @@ gnome = import('gnome')
 
 install_data(
   'org.x.clockenstein.calendar.gschema.xml',
+  'org.x.clockenstein.daemon.gschema.xml',
   install_dir: join_paths(get_option('datadir'), 'glib-2.0', 'schemas'),
 )
 
