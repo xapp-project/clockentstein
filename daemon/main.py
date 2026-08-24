@@ -16,6 +16,7 @@ CALENDAR_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "calenda
 sys.path.insert(0, CALENDAR_DIR)
 
 from dbus import BUS_INTERFACE, BUS_NAME, BUS_PATH
+from backends.google import LIMITED_RANGE, NORMAL_RANGE, RESTRICTED_RANGE
 from store import CalendarManager
 
 REFRESH_INTERVAL_SECONDS = 15 * 60
@@ -148,11 +149,32 @@ class ClockensteinDaemon:
             self.refreshing = False
             return
         today = datetime.date.today()
-        start = today - datetime.timedelta(days=31)
-        end = today + datetime.timedelta(days=365)
+        start = today - datetime.timedelta(days=NORMAL_RANGE[0])
+        end = today + datetime.timedelta(days=NORMAL_RANGE[1])
+        limited_start = today - datetime.timedelta(days=LIMITED_RANGE[0])
+        limited_end = today + datetime.timedelta(days=LIMITED_RANGE[1])
+        restricted_start = today - datetime.timedelta(days=RESTRICTED_RANGE[0])
+        restricted_end = today + datetime.timedelta(days=RESTRICTED_RANGE[1])
         self._log(f"Refreshing remote calendars from {start} through {end}")
         try:
-            errors = store.refresh_remote(start, end)
+            errors = store.refresh_remote(
+                start, end,
+                google_limited_range=(limited_start, limited_end),
+                google_restricted_range=(restricted_start, restricted_end),
+            )
+            stats = store.google.last_refresh_stats
+            if stats.get("accounts"):
+                self._log(
+                    "Google refresh: "
+                    f"page size {stats['page_size']}, "
+                    f"{stats['calendars']} calendar(s), "
+                    f"{stats['limited_calendars']} limited, "
+                    f"{stats['restricted_calendars']} restricted, "
+                    f"{stats['too_big_calendars']} too big, "
+                    f"{stats['calendar_list_requests']} calendar-list request(s), "
+                    f"{stats['event_list_requests']} event-list request(s), "
+                    f"{stats['events']} event(s)"
+                )
             if errors:
                 self._log("Refresh completed with errors: " + "; ".join(errors))
             else:

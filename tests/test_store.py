@@ -6,7 +6,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "calendar"))
 
-from backends.google import GoogleBackend, SCOPES, event_dict_to_google, google_event_to_dict
+from backends.google import (EVENTS_PAGE_SIZE, GoogleBackend, SCOPES,
+                             event_dict_to_google, google_event_to_dict)
 from store import LocalStore
 
 
@@ -101,6 +102,166 @@ class LocalStoreTests(unittest.TestCase):
 
 
 class GoogleMappingTests(unittest.TestCase):
+    def test_google_event_pages_request_the_api_maximum(self):
+        """Event pagination uses Google's largest authorized page size."""
+        self.assertEqual(EVENTS_PAGE_SIZE, 2500)
+        calls = []
+        responses = iter([
+            {"items": [{"id": "first"}], "nextPageToken": "next"},
+            {"items": [{"id": "second"}]},
+        ])
+
+        class Request:
+            def execute(self):
+                return next(responses)
+
+        class Events:
+            def list(self, **arguments):
+                calls.append(arguments)
+                return Request()
+
+        class Service:
+            def events(self):
+                return Events()
+
+        stats = {"event_list_requests": 0, "events": 0}
+        events, paginated = GoogleBackend._fetch_events(
+            Service(), "calendar-id", datetime.date(2026, 1, 1),
+            datetime.date(2026, 12, 31), stats
+        )
+        self.assertFalse(paginated)
+        self.assertEqual([event["id"] for event in events], ["first", "second"])
+        self.assertEqual([call["maxResults"] for call in calls],
+                         [EVENTS_PAGE_SIZE, EVENTS_PAGE_SIZE])
+        self.assertEqual([call["pageToken"] for call in calls], [None, "next"])
+        self.assertEqual(stats, {"event_list_requests": 2, "events": 2})
+
+    def test_paginated_normal_range_switches_calendar_to_limited_range(self):
+        """A dense calendar is retried and persisted with the limited range."""
+        event_calls = []
+
+        class Request:
+            def __init__(self, response):
+                self.response = response
+
+            def execute(self):
+                return self.response
+
+        class CalendarList:
+            def list(self, **_arguments):
+                return Request({"items": [{
+                    "id": "dense", "summary": "Dense", "selected": True,
+                    "accessRole": "owner",
+                }]})
+
+        class Events:
+            def list(self, **arguments):
+                event_calls.append(arguments)
+                if len(event_calls) == 1:
+                    return Request({
+                        "items": [{"id": "discarded"}],
+                        "nextPageToken": "another-page",
+                    })
+                return Request({"items": [{"id": "kept"}]})
+
+        class Service:
+            def calendarList(self):
+                return CalendarList()
+
+            def events(self):
+                return Events()
+
+        backend = object.__new__(GoogleBackend)
+        backend.accounts = [{
+            "id": "account", "calendars": [], "events": [],
+        }]
+        backend._services = {"account": Service()}
+        backend._credentials = {}
+        backend._errors = {}
+        backend._save = lambda: None
+
+        normal = (datetime.date(2026, 1, 1), datetime.date(2028, 1, 1))
+        limited = (datetime.date(2026, 2, 1), datetime.date(2027, 2, 1))
+        self.assertEqual(backend.refresh(*normal, limited), [])
+
+        calendar = backend.accounts[0]["calendars"][0]
+        self.assertEqual(calendar["sync_range"], "limited")
+        self.assertEqual([event["id"] for event in backend.accounts[0]["events"]],
+                         ["kept"])
+        self.assertEqual(len(event_calls), 2)
+        self.assertEqual(event_calls[0]["orderBy"], "startTime")
+        self.assertNotEqual(event_calls[0]["timeMax"], event_calls[1]["timeMax"])
+        self.assertEqual(backend.last_refresh_stats["limited_calendars"], 1)
+
+    def test_paginated_restricted_range_marks_calendar_too_big(self):
+        """All cached events are removed when even the restricted range paginates."""
+        event_calls = []
+
+        class Request:
+            def __init__(self, response):
+                self.response = response
+
+            def execute(self):
+                return self.response
+
+        class CalendarList:
+            def list(self, **_arguments):
+                return Request({"items": [{
+                    "id": "dense", "summary": "Dense", "selected": True,
+                    "accessRole": "owner",
+                }]})
+
+        class Events:
+            def list(self, **arguments):
+                event_calls.append(arguments)
+                return Request({
+                    "items": [{"id": f"discarded-{len(event_calls)}"}],
+                    "nextPageToken": "another-page",
+                })
+
+        class Service:
+            def calendarList(self):
+                return CalendarList()
+
+            def events(self):
+                return Events()
+
+        backend = object.__new__(GoogleBackend)
+        backend.accounts = [{
+            "id": "account", "calendars": [],
+            "events": [{"id": "cached", "_calendar_id": "dense",
+                        "start": {"date": "2030-01-01"},
+                        "end": {"date": "2030-01-02"}}],
+        }]
+        backend._services = {"account": Service()}
+        backend._credentials = {}
+        backend._errors = {}
+        backend._save = lambda: None
+
+        normal = (datetime.date(2026, 1, 1), datetime.date(2028, 1, 1))
+        limited = (datetime.date(2026, 2, 1), datetime.date(2027, 2, 1))
+        restricted = (datetime.date(2026, 2, 1), datetime.date(2026, 5, 1))
+        self.assertEqual(backend.refresh(*normal, limited, restricted), [])
+
+        calendar = backend.accounts[0]["calendars"][0]
+        self.assertEqual(calendar["sync_range"], "too-big")
+        self.assertEqual(backend.accounts[0]["events"], [])
+        self.assertEqual(len(event_calls), 3)
+        self.assertEqual(backend.last_refresh_stats["limited_calendars"], 1)
+        self.assertEqual(backend.last_refresh_stats["restricted_calendars"], 1)
+        self.assertEqual(backend.last_refresh_stats["too_big_calendars"], 1)
+
+        listed = backend.list_calendars()[0]
+        self.assertEqual(listed["sync_range"], "too-big")
+        self.assertFalse(listed["available"])
+
+    def test_legacy_limited_range_is_migrated(self):
+        calendars = GoogleBackend._merge_calendar_preferences(
+            [{"id": "dense", "limited_range": True}],
+            [{"id": "dense", "summary": "Dense"}],
+        )
+        self.assertEqual(calendars[0]["sync_range"], "limited")
+
     def test_google_primary_calendar_metadata_is_preserved(self):
         """Google calendar-list merging retains the primary-calendar marker."""
         calendars = GoogleBackend._merge_calendar_preferences([], [{

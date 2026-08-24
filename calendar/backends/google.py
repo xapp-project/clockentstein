@@ -17,6 +17,10 @@ SCOPES = [
     "https://www.googleapis.com/auth/calendar.events",
     "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
 ]
+EVENTS_PAGE_SIZE = 2500
+NORMAL_RANGE = (2 * 31, 2 * 365)
+LIMITED_RANGE = (31, 365)
+RESTRICTED_RANGE = (31, 3 * 31)
 
 
 class GoogleUnavailable(RuntimeError):
@@ -32,6 +36,7 @@ class GoogleBackend:
         self._services = {}
         self._credentials = {}
         self._errors = {}
+        self.last_refresh_stats = {}
         self._load_services()
 
     @property
@@ -102,8 +107,9 @@ class GoogleBackend:
                                "account_id": account["id"], "account_name": account.get("name", account["id"]),
                                "visible": cal.get("visible", True),
                                "primary": cal.get("primary", cal["id"] == account["id"]),
+                               "sync_range": cal.get("sync_range", "normal"),
                                "writable": cal.get("access_role") in ("writer", "owner"),
-                               "available": online})
+                               "available": online and cal.get("sync_range") != "too-big"})
         return result
 
     def set_visible(self, calendar_id, visible, account_id=None):
@@ -134,9 +140,21 @@ class GoogleBackend:
                 result.append(event)
         return result
 
-    def refresh(self, start: datetime.date, end: datetime.date):
+    def refresh(self, start: datetime.date, end: datetime.date,
+                limited_range=None, restricted_range=None):
         """Refresh the requested range. Returns a list of account errors."""
         errors = []
+        stats = {
+            "accounts": len(self.accounts),
+            "page_size": EVENTS_PAGE_SIZE,
+            "calendars": 0,
+            "limited_calendars": 0,
+            "restricted_calendars": 0,
+            "too_big_calendars": 0,
+            "calendar_list_requests": 0,
+            "event_list_requests": 0,
+            "events": 0,
+        }
         for account in self.accounts:
             account_id = account["id"]
             service = self._services.get(account_id)
@@ -150,7 +168,7 @@ class GoogleBackend:
                 errors.append(f"{account_id}: {self._errors.get(account_id, _('not connected'))}")
                 continue
             try:
-                remote_cals = self._fetch_calendars(service)
+                remote_cals = self._fetch_calendars(service, stats)
                 account["calendars"] = self._merge_calendar_preferences(account.get("calendars", []), remote_cals)
                 retained = [e for e in account.get("events", [])
                             if not _raw_overlaps(e, start, end)]
@@ -158,7 +176,49 @@ class GoogleBackend:
                 for cal in account["calendars"]:
                     if not cal.get("visible", True):
                         continue
-                    fetched.extend(self._fetch_events(service, cal["id"], start, end))
+                    stats["calendars"] += 1
+                    sync_range = cal.get("sync_range", "normal")
+                    if sync_range == "too-big":
+                        stats["too_big_calendars"] += 1
+                        continue
+                    if sync_range == "restricted" and restricted_range:
+                        cal_start, cal_end = restricted_range
+                        stats["restricted_calendars"] += 1
+                    elif sync_range == "limited" and limited_range:
+                        cal_start, cal_end = limited_range
+                        stats["limited_calendars"] += 1
+                    else:
+                        cal_start, cal_end = start, end
+                    events, paginated = self._fetch_events(
+                        service, cal["id"], cal_start, cal_end, stats,
+                        first_page_only=bool(limited_range)
+                    )
+                    if paginated and sync_range == "normal" and limited_range:
+                        cal["sync_range"] = sync_range = "limited"
+                        cal_start, cal_end = limited_range
+                        stats["limited_calendars"] += 1
+                        events, paginated = self._fetch_events(
+                            service, cal["id"], cal_start, cal_end, stats,
+                            first_page_only=bool(restricted_range)
+                        )
+                    if paginated and sync_range == "limited" and restricted_range:
+                        cal["sync_range"] = sync_range = "restricted"
+                        cal_start, cal_end = restricted_range
+                        stats["restricted_calendars"] += 1
+                        events, paginated = self._fetch_events(
+                            service, cal["id"], cal_start, cal_end, stats,
+                            first_page_only=True
+                        )
+                    if paginated and sync_range == "restricted":
+                        cal["sync_range"] = "too-big"
+                        stats["too_big_calendars"] += 1
+                        events = []
+                    fetched.extend(events)
+                too_big_ids = {cal["id"] for cal in account["calendars"]
+                               if cal.get("sync_range") == "too-big"}
+                if too_big_ids:
+                    retained = [event for event in retained
+                                if event.get("_calendar_id") not in too_big_ids]
                 account["events"] = retained + fetched
                 creds = self._credentials.get(account_id)
                 if creds is not None:
@@ -170,6 +230,7 @@ class GoogleBackend:
                 self._services.pop(account_id, None)
                 self._errors[account_id] = str(exc)
                 errors.append(f"{account_id}: {exc}")
+        self.last_refresh_stats = stats
         self._save()
         return errors
 
@@ -225,10 +286,12 @@ class GoogleBackend:
                 self._errors[account["id"]] = str(exc)
 
     @staticmethod
-    def _fetch_calendars(service):
+    def _fetch_calendars(service, stats=None):
         items, token = [], None
         while True:
             response = service.calendarList().list(pageToken=token).execute()
+            if stats is not None:
+                stats["calendar_list_requests"] += 1
             items.extend(response.get("items", []))
             token = response.get("nextPageToken")
             if not token:
@@ -241,31 +304,46 @@ class GoogleBackend:
         return build("calendar", "v3", http=http, cache_discovery=False)
 
     @staticmethod
-    def _fetch_events(service, calendar_id, start, end):
+    def _fetch_events(service, calendar_id, start, end, stats=None,
+                      first_page_only=False):
         local_tz = datetime.datetime.now().astimezone().tzinfo
         time_min = datetime.datetime.combine(start, datetime.time.min, local_tz).isoformat()
         time_max = datetime.datetime.combine(end + datetime.timedelta(days=1), datetime.time.min, local_tz).isoformat()
         items, token = [], None
         while True:
             response = service.events().list(calendarId=calendar_id, timeMin=time_min, timeMax=time_max,
-                                             singleEvents=True, showDeleted=True, pageToken=token).execute()
-            for event in response.get("items", []):
+                                             singleEvents=True, showDeleted=True,
+                                             orderBy="startTime",
+                                             maxResults=EVENTS_PAGE_SIZE,
+                                             pageToken=token).execute()
+            page_items = response.get("items", [])
+            if stats is not None:
+                stats["event_list_requests"] += 1
+                stats["events"] += len(page_items)
+            for event in page_items:
                 event["_calendar_id"] = calendar_id
                 items.append(event)
             token = response.get("nextPageToken")
+            if token and first_page_only:
+                return items, True
             if not token:
-                return items
+                return items, False
 
     @staticmethod
     def _merge_calendar_preferences(old, remote):
         preferences = {c["id"]: c for c in old}
-        return [{"id": c["id"], "name": c.get("summary", c["id"]),
+        result = [{"id": c["id"], "name": c.get("summary", c["id"]),
                  "color": c.get("backgroundColor", "#4285f4"),
                  "default_reminders": c.get("defaultReminders", []),
                  "access_role": c.get("accessRole", "reader"),
                  "primary": c.get("primary", False),
-                 "visible": preferences.get(c["id"], {}).get("visible", c.get("selected", True))}
+                 "visible": preferences.get(c["id"], {}).get("visible", c.get("selected", True)),
+                 "sync_range": preferences.get(c["id"], {}).get(
+                     "sync_range",
+                     "limited" if preferences.get(c["id"], {}).get("limited_range") else "normal"
+                 )}
                 for c in remote]
+        return result
 
     def _save(self):
         temp = self.accounts_file.with_suffix(".tmp")

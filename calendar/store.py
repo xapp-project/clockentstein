@@ -255,8 +255,11 @@ class CalendarManager:
     def has_remote_accounts(self):
         return self.google.has_accounts or self.caldav.has_accounts
 
-    def refresh_remote(self, start, end):
-        return self.google.refresh(start, end) + self.caldav.refresh(start, end)
+    def refresh_remote(self, start, end, google_limited_range=None,
+                       google_restricted_range=None):
+        return (self.google.refresh(start, end, google_limited_range,
+                                    google_restricted_range)
+                + self.caldav.refresh(start, end))
 
 
 def _event_sort_key(e):

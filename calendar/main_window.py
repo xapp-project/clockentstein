@@ -10,6 +10,7 @@ from xapp.util import l10n
 _ = l10n("clockenstein")
 
 from event_dialog import EventDialog
+from backends.google import LIMITED_RANGE, NORMAL_RANGE, RESTRICTED_RANGE
 from dbus import notify_changed
 from formatting import capitalize_first, format_time
 from store import CalendarManager
@@ -113,11 +114,27 @@ class MainWindow(Gtk.Window):
         body.pack_start(self._build_sidebar(), False, False, 0)
         body.pack_start(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL), False, False, 0)
 
+        calendar_area = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        calendar_area.set_hexpand(True)
+        calendar_area.set_vexpand(True)
+        body.pack_start(calendar_area, True, True, 0)
+        self.range_infobar = Gtk.InfoBar()
+        self.range_infobar.set_message_type(Gtk.MessageType.INFO)
+        self.range_infobar.set_show_close_button(True)
+        self.range_infobar.set_no_show_all(True)
+        self.range_infobar.connect("response", lambda bar, _response: bar.hide())
+        self.range_infobar_label = Gtk.Label(xalign=0)
+        self.range_infobar_label.set_line_wrap(True)
+        self.range_infobar.get_content_area().pack_start(
+            self.range_infobar_label, True, True, 0
+        )
+        calendar_area.pack_start(self.range_infobar, False, False, 0)
+
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,
                                transition_duration=100)
         self.stack.set_hexpand(True)
         self.stack.set_vexpand(True)
-        body.pack_start(self.stack, True, True, 0)
+        calendar_area.pack_start(self.stack, True, True, 0)
         self.month_view = MonthView(self.today, self._on_event_activated, self._new_event,
                                     self._scroll_month, self._select_month_date)
         self.week_view = WeekView(self.today, self._on_event_activated, self._new_event,
@@ -193,9 +210,44 @@ class MainWindow(Gtk.Window):
         offline = [s for s in states if not s.get("online")]
         if offline:
             names = ", ".join(s["name"] for s in offline)
-            self._set_status(_("Some online calendars are disconnected (read-only).") + " " + names)
+            self._set_status(
+                _("Some online calendars are disconnected (read-only).") + " " + names
+            )
         else:
             self._set_status("")
+        self._update_range_infobar()
+
+    def _google_calendars_out_of_range(self):
+        start, end = self._date_range()
+        today = datetime.date.today()
+        ranges = {
+            "normal": NORMAL_RANGE,
+            "limited": LIMITED_RANGE,
+            "restricted": RESTRICTED_RANGE,
+        }
+        calendars = []
+        for cal in self.store.google.list_calendars():
+            if not cal.get("visible", True) or cal.get("sync_range") == "too-big":
+                continue
+            past_days, future_days = ranges.get(cal.get("sync_range", "normal"),
+                                                NORMAL_RANGE)
+            synced_start = today - datetime.timedelta(days=past_days)
+            synced_end = today + datetime.timedelta(days=future_days)
+            if start < synced_start or end > synced_end:
+                calendars.append(cal["name"])
+        return calendars
+
+    def _update_range_infobar(self):
+        calendars = self._google_calendars_out_of_range()
+        if not calendars:
+            self.range_infobar.hide()
+            return
+        names = ", ".join(calendars)
+        self.range_infobar_label.set_text(
+            _("This date is outside the sync range for: %s. Events may be missing.") % names
+        )
+        self.range_infobar.get_content_area().show_all()
+        self.range_infobar.show()
 
     def _populate_upcoming(self):
         for child in self.upcoming_box.get_children():
@@ -309,16 +361,61 @@ class MainWindow(Gtk.Window):
             if group_id != "local":
                 items = sorted(items, key=self._google_calendar_sort_key)
             previous_section = None
+            calendar_grid = None
+            grid_row = 0
             for cal in items:
                 if group_id != "local":
                     section = _("My Calendars") if cal.get("writable", False) else _("Other Calendars")
                     if section != previous_section:
-                        section_label = Gtk.Label(label=section)
-                        section_label.set_xalign(0)
-                        section_label.get_style_context().add_class("clockenstein-calendar-subsection")
-                        box.pack_start(section_label, False, False, 2)
+                        if cal["provider"] == "google":
+                            calendar_grid = Gtk.Grid(column_spacing=16, row_spacing=4)
+                            calendar_grid.set_hexpand(True)
+                            calendar_grid.set_margin_start(16)
+                            calendar_heading = Gtk.Label(label=section, xalign=0)
+                            range_heading = Gtk.Label(label=_("Sync range"), xalign=0)
+                            visible_heading = Gtk.Label(label="", xalign=0.5)
+                            calendar_heading.set_hexpand(True)
+                            for heading_widget in (calendar_heading, range_heading,
+                                                   visible_heading):
+                                heading_widget.get_style_context().add_class("dim-label")
+                            calendar_grid.attach(calendar_heading, 0, 0, 1, 1)
+                            calendar_grid.attach(range_heading, 1, 0, 1, 1)
+                            calendar_grid.attach(visible_heading, 2, 0, 1, 1)
+                            box.pack_start(calendar_grid, False, False, 0)
+                            grid_row = 1
+                        else:
+                            section_label = Gtk.Label(label=section)
+                            section_label.set_xalign(0)
+                            section_label.get_style_context().add_class(
+                                "clockenstein-calendar-subsection"
+                            )
+                            section_label.set_margin_start(16)
+                            box.pack_start(section_label, False, False, 2)
                         previous_section = section
+                if cal["provider"] == "google":
+                    calendar_label = self._calendar_label(cal)
+                    sync_range = Gtk.Label(label=self._google_sync_range_label(cal), xalign=0)
+                    sync_range.get_style_context().add_class("dim-label")
+                    visibility = Gtk.Switch()
+                    visibility.set_active(cal.get("visible", True))
+                    visibility.set_halign(Gtk.Align.CENTER)
+                    visibility.set_valign(Gtk.Align.CENTER)
+                    visibility.set_tooltip_text(_("Show this calendar"))
+                    visibility.connect("notify::active", self._calendar_switch_toggled, cal)
+                    row_widgets = (calendar_label, sync_range, visibility)
+                    if not self._calendar_available(cal):
+                        for widget in row_widgets:
+                            widget.set_opacity(0.5)
+                    if self._refreshing or cal.get("sync_range") == "too-big":
+                        for widget in row_widgets:
+                            widget.set_sensitive(False)
+                    calendar_grid.attach(calendar_label, 0, grid_row, 1, 1)
+                    calendar_grid.attach(sync_range, 1, grid_row, 1, 1)
+                    calendar_grid.attach(visibility, 2, grid_row, 1, 1)
+                    grid_row += 1
+                    continue
                 row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+                row_box.set_margin_start(16)
                 if cal["provider"] != "local" and not self._calendar_available(cal):
                     row_box.set_opacity(0.5)
                 if cal["provider"] != "local" and self._refreshing:
@@ -364,6 +461,15 @@ class MainWindow(Gtk.Window):
         return (not cal.get("writable", False),
                 not cal.get("primary", cal.get("id") == cal.get("account_id")),
                 cal["name"].casefold())
+
+    @staticmethod
+    def _google_sync_range_label(cal):
+        return {
+            "normal": _("2 years ahead"),
+            "limited": _("1 year ahead"),
+            "restricted": _("3 months ahead"),
+            "too-big": _("Too many events"),
+        }.get(cal.get("sync_range", "normal"), _("2 years ahead"))
 
     @staticmethod
     def _calendar_label(cal):
