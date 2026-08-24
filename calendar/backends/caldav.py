@@ -28,6 +28,13 @@ class CalDAVBackend:
         self._clients = {}
         self._calendars = {}
         self._errors = {}
+        self._configured_accounts = set()
+        for account in self.accounts:
+            try:
+                if self._lookup_password(account["id"]):
+                    self._configured_accounts.add(account["id"])
+            except Exception as exc:
+                self._errors[account["id"]] = str(exc)
 
     @property
     def has_accounts(self):
@@ -35,8 +42,12 @@ class CalDAVBackend:
 
     def account_states(self):
         return [{"id": a["id"], "name": a.get("name", a["username"]),
-                 "online": a["id"] in self._clients,
+                 "online": self._account_available(a["id"]),
                  "error": self._errors.get(a["id"], "")} for a in self.accounts]
+
+    def _account_available(self, account_id):
+        return (account_id in self._clients
+                or account_id in self._configured_accounts and account_id not in self._errors)
 
     def connect(self, url, username, password, progress=None):
         url = self._normalise_url(url)
@@ -55,6 +66,7 @@ class CalDAVBackend:
         account.update(url=url, username=username)
         account["calendars"] = self._merge_calendars(account.get("calendars", []), calendars)
         self._store_password(account_id, username, password)
+        self._configured_accounts.add(account_id)
         self._clients[account_id] = client
         self._calendars[account_id] = {str(c.url): c for c in calendars}
         self._errors.pop(account_id, None)
@@ -70,18 +82,21 @@ class CalDAVBackend:
         self._clients.pop(account_id, None)
         self._calendars.pop(account_id, None)
         self._errors.pop(account_id, None)
+        self._configured_accounts.discard(account_id)
         self._save()
 
     def list_calendars(self):
         result = []
         for account in self.accounts:
-            online = account["id"] in self._clients
+            online = self._account_available(account["id"])
             for cal in account.get("calendars", []):
                 result.append({"id": cal["id"], "name": cal.get("name", _("Calendar")),
                                "color": cal.get("color", self._color(cal["id"])),
                                "provider": "caldav", "account_id": account["id"],
                                "account_name": account.get("name", account["username"]),
                                "visible": cal.get("visible", True), "primary": False,
+                               "last_sync": cal.get("last_sync"),
+                               "sync_error": cal.get("sync_error", ""),
                                "writable": cal.get("writable", True), "available": online})
         return result
 
@@ -98,7 +113,7 @@ class CalDAVBackend:
     def get_events(self, start=None, end=None):
         result = []
         for account in self.accounts:
-            online = account["id"] in self._clients
+            online = self._account_available(account["id"])
             calendars = {c["id"]: c for c in account.get("calendars", [])
                          if c.get("visible", True)}
             for raw in account.get("events", []):
@@ -122,14 +137,18 @@ class CalDAVBackend:
                 result.append(event)
         return result
 
-    def refresh(self, start, end):
+    def refresh(self, start, end, target_account_id=None, target_calendar_id=None):
         errors = []
         for account in self.accounts:
             account_id = account["id"]
+            if target_account_id and account_id != target_account_id:
+                continue
             try:
                 password = self._lookup_password(account_id)
                 if not password:
+                    self._configured_accounts.discard(account_id)
                     raise CalDAVUnavailable(_("Password not found in the keyring"))
+                self._configured_accounts.add(account_id)
                 client, remote = self._open(account["url"], account["username"], password)
                 self._clients[account_id] = client
                 self._calendars[account_id] = {str(c.url): c for c in remote}
@@ -137,7 +156,9 @@ class CalDAVBackend:
                 retained = [e for e in account.get("events", []) if not _overlaps(e, start, end)]
                 fetched = []
                 for info in account["calendars"]:
-                    if not info.get("visible", True):
+                    if target_calendar_id and info["id"] != target_calendar_id:
+                        continue
+                    if not info.get("visible", True) and not target_calendar_id:
                         continue
                     calendar = self._calendars[account_id].get(info["id"])
                     if calendar is None:
@@ -156,12 +177,22 @@ class CalDAVBackend:
                             payload = payload.decode("utf-8")
                         fetched.append({"calendar_id": info["id"], "url": str(remote_event.url),
                                         "ical": payload})
+                    info["last_sync"] = int(datetime.datetime.now().timestamp())
+                    info["sync_error"] = ""
+                if target_calendar_id:
+                    retained = [event for event in account.get("events", [])
+                                if event.get("calendar_id") != target_calendar_id
+                                or not _overlaps(event, start, end)]
                 account["events"] = retained + fetched
                 self._errors.pop(account_id, None)
             except Exception as exc:
                 self._clients.pop(account_id, None)
                 self._calendars.pop(account_id, None)
                 self._errors[account_id] = str(exc)
+                for info in account.get("calendars", []):
+                    if target_calendar_id and info["id"] != target_calendar_id:
+                        continue
+                    info["sync_error"] = str(exc)
                 errors.append(f"{account.get('name', account['username'])}: {exc}")
         self._save()
         return errors
@@ -202,6 +233,22 @@ class CalDAVBackend:
 
     def _require_calendar(self, account_id, calendar_id):
         calendar = self._calendars.get(account_id, {}).get(calendar_id)
+        if calendar is None and account_id in self._configured_accounts:
+            account = next((account for account in self.accounts
+                            if account["id"] == account_id), None)
+            try:
+                password = self._lookup_password(account_id)
+                if not account or not password:
+                    raise CalDAVUnavailable(_("Password not found in the keyring"))
+                client, remote = self._open(account["url"], account["username"], password)
+                self._clients[account_id] = client
+                self._calendars[account_id] = {str(item.url): item for item in remote}
+                self._errors.pop(account_id, None)
+                calendar = self._calendars[account_id].get(calendar_id)
+            except Exception as exc:
+                self._clients.pop(account_id, None)
+                self._calendars.pop(account_id, None)
+                self._errors[account_id] = str(exc)
         if calendar is None:
             raise CalDAVUnavailable(_("This CalDAV account is offline. It is now read-only."))
         return calendar
@@ -264,7 +311,9 @@ class CalDAVBackend:
                 name = previous.get("name") or _("Calendar")
             result.append({"id": calendar_id, "name": str(name),
                            "color": previous.get("color", CalDAVBackend._color(calendar_id)),
-                           "visible": previous.get("visible", True), "writable": True})
+                           "visible": previous.get("visible", True), "writable": True,
+                           "last_sync": previous.get("last_sync"),
+                           "sync_error": previous.get("sync_error", "")})
         return result
 
     @staticmethod

@@ -50,8 +50,12 @@ class GoogleBackend:
 
     def account_states(self):
         return [{"id": a["id"], "name": a.get("name", a["id"]),
-                 "online": a["id"] in self._services,
+                 "online": self._account_available(a["id"]),
                  "error": self._errors.get(a["id"], "")} for a in self.accounts]
+
+    def _account_available(self, account_id):
+        return (account_id in self._services
+                or account_id in self._credentials and account_id not in self._errors)
 
     def connect(self, google_file: Path, progress=None) -> str:
         google_file = Path(google_file)
@@ -105,7 +109,7 @@ class GoogleBackend:
     def list_calendars(self):
         result = []
         for account in self.accounts:
-            online = account["id"] in self._services
+            online = self._account_available(account["id"])
             for cal in account.get("calendars", []):
                 result.append({"id": cal["id"], "name": cal.get("name", cal["id"]),
                                "color": cal.get("color", "#4285f4"), "provider": "google",
@@ -113,6 +117,8 @@ class GoogleBackend:
                                "visible": cal.get("visible", True),
                                "primary": cal.get("primary", cal["id"] == account["id"]),
                                "sync_range": cal.get("sync_range", "normal"),
+                               "last_sync": cal.get("last_sync"),
+                               "sync_error": cal.get("sync_error", ""),
                                "writable": cal.get("access_role") in ("writer", "owner"),
                                "available": online and cal.get("sync_range") != "too-big"})
         return result
@@ -132,7 +138,7 @@ class GoogleBackend:
                      for c in a.get("calendars", []) if c.get("visible", True)}
         result = []
         for account in self.accounts:
-            online = account["id"] in self._services
+            online = self._account_available(account["id"])
             for raw in account.get("events", []):
                 cal = calendars.get((account["id"], raw.get("_calendar_id")))
                 if not cal or raw.get("status") == "cancelled":
@@ -146,7 +152,8 @@ class GoogleBackend:
         return result
 
     def refresh(self, start: datetime.date, end: datetime.date,
-                limited_range=None, restricted_range=None):
+                limited_range=None, restricted_range=None,
+                target_account_id=None, target_calendar_id=None):
         """Refresh the requested range. Returns a list of account errors."""
         errors = []
         stats = {
@@ -162,6 +169,8 @@ class GoogleBackend:
         }
         for account in self.accounts:
             account_id = account["id"]
+            if target_account_id and account_id != target_account_id:
+                continue
             service = self._services.get(account_id)
             if service is None and account_id in self._credentials:
                 try:
@@ -170,7 +179,12 @@ class GoogleBackend:
                 except Exception as exc:
                     self._errors[account_id] = str(exc)
             if not service:
-                errors.append(f"{account_id}: {self._errors.get(account_id, _('not connected'))}")
+                error = self._errors.get(account_id, _("not connected"))
+                for cal in account.get("calendars", []):
+                    if target_calendar_id and cal["id"] != target_calendar_id:
+                        continue
+                    cal["sync_error"] = error
+                errors.append(f"{account_id}: {error}")
                 continue
             try:
                 remote_cals = self._fetch_calendars(service, stats)
@@ -179,7 +193,9 @@ class GoogleBackend:
                             if not _raw_overlaps(e, start, end)]
                 fetched = []
                 for cal in account["calendars"]:
-                    if not cal.get("visible", True):
+                    if target_calendar_id and cal["id"] != target_calendar_id:
+                        continue
+                    if not cal.get("visible", True) and not target_calendar_id:
                         continue
                     stats["calendars"] += 1
                     sync_range = cal.get("sync_range", "normal")
@@ -218,12 +234,19 @@ class GoogleBackend:
                         cal["sync_range"] = "too-big"
                         stats["too_big_calendars"] += 1
                         events = []
+                    if cal.get("sync_range") != "too-big":
+                        cal["last_sync"] = int(datetime.datetime.now().timestamp())
+                        cal["sync_error"] = ""
                     fetched.extend(events)
                 too_big_ids = {cal["id"] for cal in account["calendars"]
                                if cal.get("sync_range") == "too-big"}
                 if too_big_ids:
                     retained = [event for event in retained
                                 if event.get("_calendar_id") not in too_big_ids]
+                if target_calendar_id:
+                    retained = [event for event in account.get("events", [])
+                                if event.get("_calendar_id") != target_calendar_id
+                                or not _raw_overlaps(event, start, end)]
                 account["events"] = retained + fetched
                 creds = self._credentials.get(account_id)
                 if creds is not None:
@@ -234,6 +257,10 @@ class GoogleBackend:
             except Exception as exc:
                 self._services.pop(account_id, None)
                 self._errors[account_id] = str(exc)
+                for cal in account.get("calendars", []):
+                    if target_calendar_id and cal["id"] != target_calendar_id:
+                        continue
+                    cal["sync_error"] = str(exc)
                 errors.append(f"{account_id}: {exc}")
         self.last_refresh_stats = stats
         self._save()
@@ -267,6 +294,13 @@ class GoogleBackend:
 
     def _require_service(self, account_id):
         service = self._services.get(account_id)
+        if service is None and account_id in self._credentials:
+            try:
+                service = self._build_service(self._credentials[account_id])
+                self._services[account_id] = service
+                self._errors.pop(account_id, None)
+            except Exception as exc:
+                self._errors[account_id] = str(exc)
         if not service:
             raise GoogleUnavailable(_("This Google account is offline. Its cached events are read-only."))
         return service
@@ -362,7 +396,9 @@ class GoogleBackend:
                  "sync_range": preferences.get(c["id"], {}).get(
                      "sync_range",
                      "limited" if preferences.get(c["id"], {}).get("limited_range") else "normal"
-                 )}
+                 ),
+                 "last_sync": preferences.get(c["id"], {}).get("last_sync"),
+                 "sync_error": preferences.get(c["id"], {}).get("sync_error", "")}
                 for c in remote]
         return result
 
