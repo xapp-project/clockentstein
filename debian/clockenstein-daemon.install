@@ -1,8 +1,8 @@
 etc/xdg/autostart/clockenstein-daemon.desktop
-usr/bin/clockenstein-calendar-daemon
+usr/bin/clockenstein-daemon
 usr/share/clockenstein/calendar/backends
-usr/share/clockenstein/calendar/daemon.py
 usr/share/clockenstein/calendar/dbus.py
 usr/share/clockenstein/calendar/store.py
+usr/share/clockenstein/daemon/main.py
 usr/share/dbus-1/services/org.x.clockenstein.Calendar.Service.service
 usr/share/locale

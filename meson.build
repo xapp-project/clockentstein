@@ -5,16 +5,21 @@ datadir = get_option('datadir')
 bindir = get_option('bindir')
 clockenstein_dir = join_paths(prefix, datadir, 'clockenstein')
 calendar_dir = join_paths(clockenstein_dir, 'calendar')
+daemon_dir = join_paths(clockenstein_dir, 'daemon')
 
 install_data(
   'calendar/main.py',
-  'calendar/daemon.py',
   'calendar/dbus.py',
   'calendar/formatting.py',
   'calendar/store.py',
   'calendar/event_dialog.py',
   'calendar/style.css',
   install_dir: calendar_dir,
+)
+
+install_data(
+  'daemon/main.py',
+  install_dir: daemon_dir,
 )
 
 custom_target('clockenstein_main_window_versioned',
@@ -49,6 +54,7 @@ install_data(
 
 launcher_conf = configuration_data()
 launcher_conf.set('calendar_dir', calendar_dir)
+launcher_conf.set('daemon_dir', daemon_dir)
 configure_file(
   input: 'data/clockenstein-calendar.in',
   output: 'clockenstein-calendar',
@@ -59,8 +65,8 @@ configure_file(
 )
 
 configure_file(
-  input: 'data/clockenstein-calendar-daemon.in',
-  output: 'clockenstein-calendar-daemon',
+  input: 'data/clockenstein-daemon.in',
+  output: 'clockenstein-daemon',
   configuration: launcher_conf,
   install: true,
   install_dir: bindir,

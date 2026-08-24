@@ -1,2 +1,0 @@
-#!/bin/sh
-exec /usr/bin/python3 @calendar_dir@/daemon.py "$@"

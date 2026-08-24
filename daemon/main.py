@@ -1,7 +1,9 @@
 #!/usr/bin/python3
 import argparse
 import datetime
+import os
 import signal
+import sys
 
 import gi
 from setproctitle import setproctitle
@@ -9,6 +11,10 @@ from setproctitle import setproctitle
 gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib
 from xapp.threading import run_async, run_idle
+
+# Calendar modules remain shared with the graphical calendar application.
+CALENDAR_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "calendar")
+sys.path.insert(0, CALENDAR_DIR)
 
 from dbus import BUS_INTERFACE, BUS_NAME, BUS_PATH
 from store import CalendarManager
@@ -30,7 +36,7 @@ INTERFACE_XML = f"""
 """
 
 
-class CalendarDaemon:
+class ClockensteinDaemon:
     def __init__(self, verbose=False):
         self.verbose = verbose
         self.connection = None
@@ -152,12 +158,12 @@ class CalendarDaemon:
 
     def _log(self, message):
         if self.verbose:
-            print(f"clockenstein-calendar-daemon: {message}", flush=True)
+            print(f"clockenstein-daemon: {message}", flush=True)
 
 
 if __name__ == "__main__":
-    setproctitle("clockenstein-calendar-daemon")
-    parser = argparse.ArgumentParser(description="Clockenstein calendar service")
+    setproctitle("clockenstein-daemon")
+    parser = argparse.ArgumentParser(description="Clockenstein background service")
     parser.add_argument("-v", "--verbose", action="store_true")
     arguments = parser.parse_args()
-    CalendarDaemon(verbose=arguments.verbose).run()
+    ClockensteinDaemon(verbose=arguments.verbose).run()
