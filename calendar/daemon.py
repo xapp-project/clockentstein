@@ -4,6 +4,8 @@ import datetime
 import signal
 
 import gi
+from setproctitle import setproctitle
+
 gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib
 from xapp.threading import run_async, run_idle
@@ -154,6 +156,7 @@ class CalendarDaemon:
 
 
 if __name__ == "__main__":
+    setproctitle("clockenstein-calendar-daemon")
     parser = argparse.ArgumentParser(description="Clockenstein calendar service")
     parser.add_argument("-v", "--verbose", action="store_true")
     arguments = parser.parse_args()
