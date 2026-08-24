@@ -10,6 +10,49 @@ Calendar application for Linux desktops.
 - Google calendars (read-only when disconnected or offline)
 - CalDAV, Nextcloud, Memotoo, etc (read-only when disconnected or offline)
 
+## Architecture and synchronization
+
+`clockenstein-calendar` is the client application.
+
+`clockenstein-daemon` is the daemon which runs in the background, syncs the remote calendars, and is responsible for alarms.
+
+It is started at session login via XDG autostart and runs as a systemd user service which is respawned automatically when it dies. It can also be d-bus activated if a client requests it.
+
+The daemon:
+
+- writes to `.xsession-errors`.
+- becomes verbose if the `gsettings` key `org.x.clockenstein.daemon verbose` is set to `true`
+- is restarted on package updates (this is done in `debian/postinst`)
+- handles all interactions with remote (Google, Caldav) servers except for CRUD operations and accounts setup (which are handled by the client)
+- syncs remote events on startup and then on a regular basis
+- communicates to clients via DBUS to tell when something has `Changed` or to accept or queue refresh requests
+
+`tools/dbus-calendar-client.py` simulates an applet which shows calendar events (similar to the Cinnamon clock applet)
+
+The local cache is in `~/.local/share/clockenstein`.
+
+### Limits, synchronization frequencies and ranges
+
+There are no limits for local calendars.
+
+It's important to keep the the number of requests low when it comes to the Google API because
+we share one key for all users.
+
+We sync Google every 2 hours.
+
+We want a maximum of 2500 events per Google calendar in order to be able to sync in a single
+API request.
+
+Calendars with less than 2500 events get a sync range of 2 years. If the number of events
+is larger than 2500, we reduce this to 1 year and try again, then 3 months and eventually
+we refuse to sync the calendar.
+
+CalDav is different because it's a different connection for each user.
+We sync it every 15 minutes for a range of 2 years.
+
+When we navigate outside the range, in the case of Google no events are shown, in the case of
+CalDav we sync extra ranges from the remote.
+
 ## TODO
 
 - Set up translations
@@ -17,7 +60,6 @@ Calendar application for Linux desktops.
 - Implement an alarm/reminder/notification service
 - Support repeating tasks
 - Implement time utilities (alarms, stopwatch, timers)
-- Implement DBUS interfaces for calendar applets and migrate Cinnamon
 - Set up a Google app (the Clockenstein prototype uses GOA's google app, it needs its own app before release)
 
 ## Dependencies
