@@ -187,8 +187,6 @@ class GoogleBackend:
                 errors.append(f"{account_id}: {error}")
                 continue
             try:
-                remote_cals = self._fetch_calendars(service, stats)
-                account["calendars"] = self._merge_calendar_preferences(account.get("calendars", []), remote_cals)
                 retained = [e for e in account.get("events", [])
                             if not _raw_overlaps(e, start, end)]
                 fetched = []

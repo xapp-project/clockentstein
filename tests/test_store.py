@@ -187,7 +187,10 @@ class GoogleMappingTests(unittest.TestCase):
 
         backend = object.__new__(GoogleBackend)
         backend.accounts = [{
-            "id": "account", "calendars": [], "events": [],
+            "id": "account", "calendars": [{
+                "id": "dense", "name": "Dense", "visible": True,
+                "access_role": "owner", "sync_range": "normal",
+            }], "events": [],
         }]
         backend._services = {"account": Service()}
         backend._credentials = {}
@@ -242,7 +245,10 @@ class GoogleMappingTests(unittest.TestCase):
 
         backend = object.__new__(GoogleBackend)
         backend.accounts = [{
-            "id": "account", "calendars": [],
+            "id": "account", "calendars": [{
+                "id": "dense", "name": "Dense", "visible": True,
+                "access_role": "owner", "sync_range": "normal",
+            }],
             "events": [{"id": "cached", "_calendar_id": "dense",
                         "start": {"date": "2030-01-01"},
                         "end": {"date": "2030-01-02"}}],
