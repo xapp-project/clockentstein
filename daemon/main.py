@@ -228,7 +228,9 @@ class ClockensteinDaemon:
         self.last_reminder_check = now
         try:
             minutes = self.settings.get_uint(NOTIFICATION_MINUTES_KEY)
-            for event in _due_notifications(self.reminder_events, since, now, minutes):
+            events = [event for event in self.reminder_events
+                      if event.get("reminders", True)]
+            for event in _due_notifications(events, since, now, minutes):
                 self._emit_reminder(event)
         except Exception as exc:
             self._log(f"Could not check reminders: {exc}")
@@ -236,7 +238,7 @@ class ClockensteinDaemon:
 
     def _reload_reminder_events(self):
         try:
-            self.reminder_events = CalendarManager().get_events()
+            self.reminder_events = CalendarManager().get_events(include_hidden=True)
         except Exception as exc:
             self._log(f"Could not reload reminders: {exc}")
 

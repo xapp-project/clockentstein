@@ -104,6 +104,7 @@ class CalDAVBackend:
                                "provider": "caldav", "account_id": account["id"],
                                "account_name": account.get("name", account["username"]),
                                "visible": cal.get("visible", True), "primary": False,
+                               "reminders": cal.get("reminders", True),
                                "last_sync": cal.get("last_sync"),
                                "sync_error": cal.get("sync_error", ""),
                                "writable": cal.get("writable", True), "available": online})
@@ -119,12 +120,22 @@ class CalDAVBackend:
                     self._save()
                     return
 
-    def get_events(self, start=None, end=None):
+    def set_reminders(self, calendar_id, enabled, account_id=None):
+        for account in self.accounts:
+            if account_id and account["id"] != account_id:
+                continue
+            for cal in account.get("calendars", []):
+                if cal["id"] == calendar_id:
+                    cal["reminders"] = bool(enabled)
+                    self._save()
+                    return
+
+    def get_events(self, start=None, end=None, include_hidden=False):
         result = []
         for account in self.accounts:
             online = self._account_available(account["id"])
             calendars = {c["id"]: c for c in account.get("calendars", [])
-                         if c.get("visible", True)}
+                         if include_hidden or c.get("visible", True)}
             for raw in account.get("events", []):
                 cal = calendars.get(raw.get("calendar_id"))
                 if not cal:
@@ -141,6 +152,7 @@ class CalDAVBackend:
                              account_name=account.get("name", account["username"]),
                              calendar_id=cal["id"], calendar_name=cal.get("name", _("Calendar")),
                              calendar_color=cal.get("color", self._color(cal["id"])),
+                             reminders=cal.get("reminders", True),
                              editable=bool(online and cal.get("writable", True)), cached=not online,
                              _caldav_url=raw.get("url"))
                 result.append(event)
@@ -322,6 +334,7 @@ class CalDAVBackend:
             result.append({"id": calendar_id, "name": str(name),
                            "color": previous.get("color", CalDAVBackend._color(calendar_id)),
                            "visible": previous.get("visible", True), "writable": True,
+                           "reminders": previous.get("reminders", True),
                            "last_sync": previous.get("last_sync"),
                            "sync_error": previous.get("sync_error", "")})
         return result

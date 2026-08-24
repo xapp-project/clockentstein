@@ -397,14 +397,16 @@ class MainWindow(Gtk.Window):
                             calendar_grid.set_margin_start(16)
                             calendar_heading = Gtk.Label(label=section, xalign=0)
                             status_heading = Gtk.Label(label=_("Status"), xalign=0)
-                            visible_heading = Gtk.Label(label="", xalign=0.5)
+                            reminders_heading = Gtk.Label(label=_("Reminders"), xalign=0.5)
+                            visible_heading = Gtk.Label(label=_("Visible"), xalign=0.5)
                             refresh_heading = Gtk.Label(label="", xalign=0.5)
                             calendar_heading.set_hexpand(True)
                             headings = [calendar_heading]
                             if cal["provider"] == "google":
                                 range_heading = Gtk.Label(label=_("Sync range"), xalign=0)
                                 headings.append(range_heading)
-                            headings.extend((status_heading, visible_heading, refresh_heading))
+                            headings.extend((status_heading, reminders_heading,
+                                             visible_heading, refresh_heading))
                             for heading_widget in headings:
                                 heading_widget.get_style_context().add_class("dim-label")
                             calendar_grid.attach(calendar_heading, 0, 0, 1, 1)
@@ -413,8 +415,9 @@ class MainWindow(Gtk.Window):
                                 calendar_grid.attach(range_heading, column, 0, 1, 1)
                                 column += 1
                             calendar_grid.attach(status_heading, column, 0, 1, 1)
-                            calendar_grid.attach(visible_heading, column + 1, 0, 1, 1)
-                            calendar_grid.attach(refresh_heading, column + 2, 0, 1, 1)
+                            calendar_grid.attach(reminders_heading, column + 1, 0, 1, 1)
+                            calendar_grid.attach(visible_heading, column + 2, 0, 1, 1)
+                            calendar_grid.attach(refresh_heading, column + 3, 0, 1, 1)
                             box.pack_start(calendar_grid, False, False, 0)
                             grid_row = 1
                         else:
@@ -439,6 +442,7 @@ class MainWindow(Gtk.Window):
                     visibility.set_valign(Gtk.Align.CENTER)
                     visibility.set_tooltip_text(_("Show this calendar"))
                     visibility.connect("notify::active", self._calendar_switch_toggled, cal)
+                    reminders = self._calendar_reminders_toggle(cal)
                     refresh = Gtk.Button.new_from_icon_name(
                         "view-refresh-symbolic", Gtk.IconSize.MENU
                     )
@@ -460,7 +464,7 @@ class MainWindow(Gtk.Window):
                     else:
                         refresh.set_tooltip_text(_("Refresh this calendar"))
                     refresh.connect("clicked", self._refresh_calendar, cal)
-                    row_widgets = [calendar_label, status, visibility, refresh]
+                    row_widgets = [calendar_label, status, reminders, visibility, refresh]
                     if cal["provider"] == "google":
                         sync_range = Gtk.Label(label=self._google_sync_range_label(cal), xalign=0)
                         sync_range.get_style_context().add_class("dim-label")
@@ -477,8 +481,9 @@ class MainWindow(Gtk.Window):
                         calendar_grid.attach(sync_range, column, grid_row, 1, 1)
                         column += 1
                     calendar_grid.attach(status, column, grid_row, 1, 1)
-                    calendar_grid.attach(visibility, column + 1, grid_row, 1, 1)
-                    calendar_grid.attach(refresh, column + 2, grid_row, 1, 1)
+                    calendar_grid.attach(reminders, column + 1, grid_row, 1, 1)
+                    calendar_grid.attach(visibility, column + 2, grid_row, 1, 1)
+                    calendar_grid.attach(refresh, column + 3, grid_row, 1, 1)
                     grid_row += 1
                     continue
                 row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
@@ -494,6 +499,11 @@ class MainWindow(Gtk.Window):
                 visibility.set_tooltip_text(_("Show this calendar"))
                 visibility.connect("notify::active", self._calendar_switch_toggled, cal)
                 row_box.pack_end(visibility, False, False, 0)
+                reminders = self._calendar_reminders_toggle(cal)
+                row_box.pack_end(reminders, False, False, 8)
+                reminders_label = Gtk.Label(label=_("Reminders"))
+                reminders_label.get_style_context().add_class("dim-label")
+                row_box.pack_end(reminders_label, False, False, 0)
                 if cal["provider"] == "local":
                     edit = Gtk.Button.new_from_icon_name("document-edit-symbolic", Gtk.IconSize.MENU)
                     edit.set_relief(Gtk.ReliefStyle.NONE)
@@ -702,6 +712,31 @@ class MainWindow(Gtk.Window):
         self.store.set_visible(cal["provider"], cal["id"], switch.get_active(), cal.get("account_id"))
         self._populate_calendar_list()
         self._update_views()
+        notify_changed()
+
+    def _calendar_reminders_toggle(self, cal):
+        button = Gtk.ToggleButton()
+        button.set_active(cal.get("reminders", True))
+        button.set_halign(Gtk.Align.CENTER)
+        button.set_valign(Gtk.Align.CENTER)
+        button.set_image(Gtk.Image.new_from_icon_name(
+            "audio-volume-high-symbolic" if button.get_active()
+            else "audio-volume-muted-symbolic",
+            Gtk.IconSize.MENU,
+        ))
+        button.set_tooltip_text(_("Remind me about events in this calendar"))
+        button.connect("toggled", self._calendar_reminders_toggled, cal)
+        return button
+
+    def _calendar_reminders_toggled(self, button, cal):
+        enabled = button.get_active()
+        button.set_image(Gtk.Image.new_from_icon_name(
+            "audio-volume-high-symbolic" if enabled else "audio-volume-muted-symbolic",
+            Gtk.IconSize.MENU,
+        ))
+        self.store.set_reminders(
+            cal["provider"], cal["id"], enabled, cal.get("account_id")
+        )
         notify_changed()
 
     def _refresh_calendar(self, button, cal):

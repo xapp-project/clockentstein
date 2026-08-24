@@ -115,6 +115,7 @@ class GoogleBackend:
                                "color": cal.get("color", "#4285f4"), "provider": "google",
                                "account_id": account["id"], "account_name": account.get("name", account["id"]),
                                "visible": cal.get("visible", True),
+                               "reminders": cal.get("reminders", True),
                                "primary": cal.get("primary", cal["id"] == account["id"]),
                                "sync_range": cal.get("sync_range", "normal"),
                                "last_sync": cal.get("last_sync"),
@@ -133,9 +134,20 @@ class GoogleBackend:
                     self._save()
                     return
 
-    def get_events(self, start=None, end=None):
+    def set_reminders(self, calendar_id, enabled, account_id=None):
+        for account in self.accounts:
+            if account_id and account["id"] != account_id:
+                continue
+            for cal in account.get("calendars", []):
+                if cal["id"] == calendar_id:
+                    cal["reminders"] = bool(enabled)
+                    self._save()
+                    return
+
+    def get_events(self, start=None, end=None, include_hidden=False):
         calendars = {(a["id"], c["id"]): c for a in self.accounts
-                     for c in a.get("calendars", []) if c.get("visible", True)}
+                     for c in a.get("calendars", [])
+                     if include_hidden or c.get("visible", True)}
         result = []
         for account in self.accounts:
             online = self._account_available(account["id"])
@@ -390,6 +402,7 @@ class GoogleBackend:
                  "access_role": c.get("accessRole", "reader"),
                  "primary": c.get("primary", False),
                  "visible": preferences.get(c["id"], {}).get("visible", c.get("selected", True)),
+                 "reminders": preferences.get(c["id"], {}).get("reminders", True),
                  "sync_range": preferences.get(c["id"], {}).get(
                      "sync_range",
                      "limited" if preferences.get(c["id"], {}).get("limited_range") else "normal"
@@ -457,6 +470,7 @@ def google_event_to_dict(raw, calendar, account, online):
             "account_id": account["id"], "calendar_id": calendar["id"],
             "calendar_name": calendar.get("name", calendar["id"]),
             "calendar_color": calendar.get("color", "#4285f4"),
+            "reminders": calendar.get("reminders", True),
             "sync_range": calendar.get("sync_range", "normal"),
             "editable": bool(online and writable), "cached": not online}
 

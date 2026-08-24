@@ -24,7 +24,32 @@ class LocalStoreTests(unittest.TestCase):
         """A new data store creates exactly one usable Personal calendar."""
         calendars = self.store.list_calendars()
         self.assertEqual([c["name"] for c in calendars], ["Personal"])
+        self.assertTrue(calendars[0]["reminders"])
         self.assertTrue((Path(self.temp.name) / "calendars" / "personal.ics").exists())
+
+    def test_calendar_reminder_preference_is_persistent(self):
+        """New calendars enable reminders and retain an explicit mute."""
+        work = self.store.create_calendar("Work")
+        self.assertTrue(work["reminders"])
+        self.store.set_reminders(work["id"], False)
+        reopened = LocalStore(Path(self.temp.name))
+        muted = next(c for c in reopened.list_calendars() if c["id"] == work["id"])
+        self.assertFalse(muted["reminders"])
+
+    def test_hidden_calendar_events_remain_available_to_reminder_scheduler(self):
+        """Calendar visibility and reminder delivery are independent preferences."""
+        personal = self.store.list_calendars()[0]
+        self.store.create_event({
+            "calendar_id": personal["id"], "summary": "Hidden reminder",
+            "all_day": True, "date_start": datetime.date(2026, 8, 25),
+            "date_end": datetime.date(2026, 8, 25),
+        })
+        self.store.set_visible(personal["id"], False)
+        self.assertEqual(self.store.get_events(), [])
+        self.assertEqual(
+            [event["summary"] for event in self.store.get_events(include_hidden=True)],
+            ["Hidden reminder"],
+        )
 
     def test_events_belong_to_their_local_calendar(self):
         """Creating an event stores and returns it under its selected calendar."""

@@ -59,7 +59,8 @@ class LocalStore:
     def _calendar_info(calendar_id, name, color):
         return {"id": calendar_id, "name": name, "color": color,
                 "provider": "local", "account_id": "local", "account_name": "local",
-                "visible": True, "writable": True, "available": True}
+                "visible": True, "reminders": True,
+                "writable": True, "available": True}
 
     def list_calendars(self) -> list[dict]:
         return [dict(item) for item in self._registry]
@@ -86,6 +87,13 @@ class LocalStore:
                 self._save_registry()
                 return
 
+    def set_reminders(self, calendar_id: str, enabled: bool, _account_id=None):
+        for item in self._registry:
+            if item["id"] == calendar_id:
+                item["reminders"] = bool(enabled)
+                self._save_registry()
+                return
+
     def update_calendar(self, calendar_id: str, name: str, color: str):
         calendar = next((item for item in self._registry
                          if item["id"] == calendar_id), None)
@@ -107,10 +115,10 @@ class LocalStore:
         del self._registry[index]
         self._save_registry()
 
-    def get_events(self, start=None, end=None) -> list[dict]:
+    def get_events(self, start=None, end=None, include_hidden=False) -> list[dict]:
         results = []
         for info in self._registry:
-            if not info.get("visible", True):
+            if not include_hidden and not info.get("visible", True):
                 continue
             for component in self._load_calendar(info["id"]).walk():
                 if component.name != "VEVENT":
@@ -122,7 +130,8 @@ class LocalStore:
                     continue
                 ev.update(calendar_id=info["id"], calendar_name=info["name"],
                           calendar_color=info["color"], provider="local",
-                          account_id="local", editable=True)
+                          account_id="local", editable=True,
+                          reminders=info.get("reminders", True))
                 results.append(ev)
         return sorted(results, key=_event_sort_key)
 
@@ -220,9 +229,13 @@ class CalendarManager:
         return (self.local.list_calendars() + self.google.list_calendars()
                 + self.caldav.list_calendars())
 
-    def get_events(self, start=None, end=None):
-        return sorted(self.local.get_events(start, end) + self.google.get_events(start, end)
-                      + self.caldav.get_events(start, end), key=_event_sort_key)
+    def get_events(self, start=None, end=None, include_hidden=False):
+        return sorted(
+            self.local.get_events(start, end, include_hidden)
+            + self.google.get_events(start, end, include_hidden)
+            + self.caldav.get_events(start, end, include_hidden),
+            key=_event_sort_key,
+        )
 
     def create_calendar(self, name, color=DEFAULT_COLOR):
         return self.local.create_calendar(name, color)
@@ -235,6 +248,9 @@ class CalendarManager:
 
     def set_visible(self, provider, calendar_id, visible, account_id=None):
         self._backend(provider).set_visible(calendar_id, visible, account_id)
+
+    def set_reminders(self, provider, calendar_id, enabled, account_id=None):
+        self._backend(provider).set_reminders(calendar_id, enabled, account_id)
 
     def writable_calendars(self):
         return [c for c in self.list_calendars() if c.get("writable") and c.get("available")]
