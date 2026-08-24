@@ -1,3 +1,4 @@
 [D-BUS Service]
 Name=org.x.clockenstein.Calendar.Service
 Exec=@bindir@/clockenstein-daemon
+SystemdService=clockenstein-daemon.service

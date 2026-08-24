@@ -1,0 +1,11 @@
+[Unit]
+Description=Clockenstein background service
+
+[Service]
+Type=dbus
+BusName=org.x.clockenstein.Calendar.Service
+ExecStart=@bindir@/clockenstein-daemon
+Restart=on-failure
+RestartSec=2
+StandardOutput=append:%h/.xsession-errors
+StandardError=append:%h/.xsession-errors

@@ -6,6 +6,7 @@ bindir = get_option('bindir')
 clockenstein_dir = join_paths(prefix, datadir, 'clockenstein')
 calendar_dir = join_paths(clockenstein_dir, 'calendar')
 daemon_dir = join_paths(clockenstein_dir, 'daemon')
+systemd_user_unit_dir = join_paths(prefix, 'lib', 'systemd', 'user')
 
 install_data(
   'calendar/main.py',
@@ -17,8 +18,12 @@ install_data(
   install_dir: calendar_dir,
 )
 
-install_data(
-  'daemon/main.py',
+custom_target('clockenstein_daemon_versioned',
+  input: 'daemon/main.py',
+  output: 'main.py',
+  command: ['sed', 's/__PROJECT_VERSION__/@0@/g'.format(meson.project_version()), '@INPUT@'],
+  capture: true,
+  install: true,
   install_dir: daemon_dir,
 )
 
@@ -84,10 +89,16 @@ configure_file(
 )
 
 configure_file(
-  input: 'data/clockenstein-daemon.desktop.in',
-  output: 'clockenstein-daemon.desktop',
+  input: 'data/clockenstein-daemon.service.in',
+  output: 'clockenstein-daemon.service',
   configuration: service_conf,
   install: true,
+  install_dir: systemd_user_unit_dir,
+)
+
+install_data(
+  'data/clockenstein-daemon.desktop.in',
+  rename: 'clockenstein-daemon.desktop',
   install_dir: join_paths(get_option('sysconfdir'), 'xdg', 'autostart'),
 )
 

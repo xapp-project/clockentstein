@@ -20,6 +20,7 @@ from dbus import BUS_INTERFACE, BUS_NAME, BUS_PATH
 from store import CalendarManager
 
 REFRESH_INTERVAL_SECONDS = 15 * 60
+VERSION = "__PROJECT_VERSION__"
 
 INTERFACE_XML = f"""
 <node>
@@ -46,7 +47,8 @@ class ClockensteinDaemon:
         self.node_info = Gio.DBusNodeInfo.new_for_xml(INTERFACE_XML)
 
     def run(self):
-        self._log(f"Starting; requesting {BUS_NAME}")
+        print(f"clockenstein-daemon: Starting version {VERSION}", flush=True)
+        self._log(f"Requesting {BUS_NAME}")
         Gio.bus_own_name(
             Gio.BusType.SESSION,
             BUS_NAME,

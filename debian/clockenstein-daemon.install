@@ -1,5 +1,6 @@
 etc/xdg/autostart/clockenstein-daemon.desktop
 usr/bin/clockenstein-daemon
+usr/lib/systemd/user/clockenstein-daemon.service
 usr/share/clockenstein/calendar/backends
 usr/share/clockenstein/calendar/dbus.py
 usr/share/clockenstein/calendar/store.py

@@ -25,6 +25,7 @@ Architecture: all
 Depends:
  ${misc:Depends},
  gir1.2-secret-1,
+ init-system-helpers,
  python3,
  python3-caldav,
  python3-gi,

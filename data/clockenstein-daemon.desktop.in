@@ -2,6 +2,6 @@
 Type=Application
 Name=Clockenstein Daemon
 Comment=Provide background services for Clockenstein
-Exec=@bindir@/clockenstein-daemon
+Exec=/usr/bin/systemctl --user start clockenstein-daemon.service
 NoDisplay=true
 X-GNOME-Autostart-enabled=true
