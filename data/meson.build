@@ -2,7 +2,7 @@ i18n = import('i18n')
 gnome = import('gnome')
 
 install_data(
-  'org.x.clockenstein.Calendar.gschema.xml',
+  'org.x.clockenstein.calendar.gschema.xml',
   install_dir: join_paths(get_option('datadir'), 'glib-2.0', 'schemas'),
 )
 

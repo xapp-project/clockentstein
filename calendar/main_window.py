@@ -24,7 +24,7 @@ class MainWindow(Gtk.Window):
     def __init__(self, store: CalendarManager):
         super().__init__(title=_("Calendar"))
         self.store = store
-        self.settings = Gio.Settings.new("org.x.clockenstein.Calendar")
+        self.settings = Gio.Settings.new("org.x.clockenstein.calendar")
         width = self.settings.get_int("window-width")
         height = self.settings.get_int("window-height")
         self.set_default_size(width, height)

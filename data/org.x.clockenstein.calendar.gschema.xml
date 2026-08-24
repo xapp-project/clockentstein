@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
-  <schema id="org.x.clockenstein.Calendar" path="/org/x/clockenstein/calendar/">
+  <schema id="org.x.clockenstein.calendar" path="/org/x/clockenstein/calendar/">
     <key name="default-view" type="s">
       <default>'month'</default>
     </key>

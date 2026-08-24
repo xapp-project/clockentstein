@@ -7,6 +7,6 @@ usr/share/clockenstein/calendar/main_window.py
 usr/share/clockenstein/calendar/style.css
 usr/share/clockenstein/calendar/views
 usr/share/clockenstein/calendar/widgets
-usr/share/glib-2.0/schemas/org.x.clockenstein.Calendar.gschema.xml
+usr/share/glib-2.0/schemas/org.x.clockenstein.calendar.gschema.xml
 usr/share/icons/hicolor/scalable/apps/clockenstein-calendar.svg
 usr/share/icons/hicolor/scalable/apps/clockenstein-clock.svg
