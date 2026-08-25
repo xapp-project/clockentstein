@@ -149,9 +149,10 @@ class LocalStore:
         return next(e for e in self.get_events() if e["uid"] == uid and e["calendar_id"] == calendar_id)
 
     def update_event(self, uid: str, data: dict) -> Optional[dict]:
-        calendar_id = data.get("calendar_id") or data.get("original_calendar_id") or self._find_calendar(uid)
-        cal = self._load_calendar(calendar_id)
-        component = self._find(cal, uid)
+        source_id = data.get("original_calendar_id") or self._find_calendar(uid)
+        calendar_id = data.get("calendar_id") or source_id
+        source = self._load_calendar(source_id)
+        component = self._find(source, uid)
         if component is None:
             return None
         ev = Event()
@@ -160,10 +161,16 @@ class LocalStore:
                 ev.add(key, component[key.upper()])
         ev.add("last-modified", datetime.datetime.now(datetime.timezone.utc))
         _apply_data(ev, data)
-        cal.subcomponents = [c for c in cal.subcomponents
-                             if not (c.name == "VEVENT" and str(c.get("uid", "")) == uid)]
-        cal.add_component(ev)
-        self._save_calendar(calendar_id, cal)
+        source.subcomponents = [c for c in source.subcomponents
+                                if not (c.name == "VEVENT" and str(c.get("uid", "")) == uid)]
+        if calendar_id == source_id:
+            source.add_component(ev)
+            self._save_calendar(source_id, source)
+        else:
+            destination = self._load_calendar(calendar_id)
+            destination.add_component(ev)
+            self._save_calendar(calendar_id, destination)
+            self._save_calendar(source_id, source)
         return next((e for e in self.get_events() if e["uid"] == uid and e["calendar_id"] == calendar_id), None)
 
     def delete_event(self, uid: str, calendar_id: Optional[str] = None, _account_id=None) -> bool:

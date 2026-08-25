@@ -226,12 +226,20 @@ class CalDAVBackend:
 
     def update_event(self, uid, data):
         account = next(a for a in self.accounts if a["id"] == data["account_id"])
+        source_id = data.get("original_calendar_id") or data["calendar_id"]
         cached = next((e for e in account.get("events", [])
-                       if e.get("calendar_id") == data["calendar_id"] and _cached_uid(e) == uid), None)
+                       if e.get("calendar_id") == source_id and _cached_uid(e) == uid), None)
         if not cached or not cached.get("url"):
             raise CalDAVUnavailable(_("The event has no CalDAV resource URL"))
-        self._require_calendar(data["account_id"], data["calendar_id"])
         parent = self._require_calendar(data["account_id"], data["calendar_id"])
+        if source_id != data["calendar_id"]:
+            remote = parent.save_event(_event_ical(data, uid))
+            source = self._require_calendar(data["account_id"], source_id)
+            caldav.Event(client=self._clients[data["account_id"]], parent=source,
+                         url=cached["url"]).delete()
+            self._cache_remote(data["account_id"], data["calendar_id"], remote,
+                               cached["url"])
+            return data
         remote = caldav.Event(client=self._clients[data["account_id"]], parent=parent,
                              url=cached["url"], data=_event_ical(data, uid))
         remote.save()

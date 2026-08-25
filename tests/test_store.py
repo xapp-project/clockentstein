@@ -67,6 +67,21 @@ class LocalStoreTests(unittest.TestCase):
         self.assertEqual(self.store.get_events()[0]["summary"], "Updated")
         self.assertTrue(self.store.delete_event(event["uid"], work["id"]))
 
+    def test_local_event_can_move_between_calendars_on_update(self):
+        personal = self.store.list_calendars()[0]
+        work = self.store.create_calendar("Work")
+        event = self.store.create_event({
+            "calendar_id": personal["id"], "summary": "Move me", "all_day": True,
+            "date_start": datetime.date(2026, 8, 22),
+            "date_end": datetime.date(2026, 8, 22),
+        })
+        event.update(calendar_id=work["id"], original_calendar_id=personal["id"])
+        moved = self.store.update_event(event["uid"], event)
+        self.assertEqual(moved["calendar_id"], work["id"])
+        self.assertEqual([(item["uid"], item["calendar_id"])
+                          for item in self.store.get_events()],
+                         [(event["uid"], work["id"])])
+
     def test_visibility_is_persistent(self):
         """Calendar visibility survives reloading the store from disk."""
         personal = self.store.list_calendars()[0]
@@ -117,6 +132,50 @@ class LocalStoreTests(unittest.TestCase):
 
 
 class GoogleMappingTests(unittest.TestCase):
+    def test_google_event_move_precedes_patch(self):
+        calls = []
+
+        class Request:
+            def __init__(self, result):
+                self.result = result
+
+            def execute(self):
+                return self.result
+
+        class Events:
+            def move(self, **arguments):
+                calls.append(("move", arguments))
+                return Request({"id": "event"})
+
+            def patch(self, **arguments):
+                calls.append(("patch", arguments))
+                return Request({"id": "event"})
+
+        class Service:
+            def events(self):
+                return Events()
+
+        backend = object.__new__(GoogleBackend)
+        backend.accounts = [{
+            "id": "account",
+            "calendars": [{"id": "source", "sync_range": "normal"},
+                          {"id": "destination", "sync_range": "normal"}],
+            "events": [{"id": "event", "_calendar_id": "source"}],
+        }]
+        backend._services = {"account": Service()}
+        backend._credentials = {}
+        backend._save = lambda: None
+        date = datetime.date.today()
+        backend.update_event("event", {
+            "account_id": "account", "calendar_id": "destination",
+            "original_calendar_id": "source", "summary": "Moved",
+            "all_day": True, "date_start": date, "date_end": date,
+        })
+        self.assertEqual([name for name, _arguments in calls], ["move", "patch"])
+        self.assertEqual(calls[0][1]["destination"], "destination")
+        self.assertEqual(backend.accounts[0]["events"][0]["_calendar_id"],
+                         "destination")
+
     def test_google_event_must_fit_calendar_sync_range(self):
         today = datetime.date(2026, 8, 24)
         calendar = {"sync_range": "restricted"}

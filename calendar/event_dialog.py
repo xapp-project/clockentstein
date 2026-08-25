@@ -83,8 +83,17 @@ class EventDialog(Gtk.Dialog):
         self.editable = editable
         self._populating = True
         self._adjusting_end = False
-        self.calendar_options = (calendar_options if is_new and calendar_options is not None else
-                                 store.writable_calendars() if is_new else [self.event])
+        if is_new:
+            self.calendar_options = (calendar_options if calendar_options is not None
+                                     else store.writable_calendars())
+        elif editable:
+            self.calendar_options = [
+                calendar for calendar in store.writable_calendars()
+                if calendar.get("provider") == self.event.get("provider")
+                and calendar.get("account_id") == self.event.get("account_id")
+            ] or [self.event]
+        else:
+            self.calendar_options = [self.event]
 
         self.set_default_size(420, -1)
         self.add_button(_("Cancel") if editable else _("Close"), Gtk.ResponseType.CANCEL)
@@ -163,8 +172,14 @@ class EventDialog(Gtk.Dialog):
         text_cell = Gtk.CellRendererText()
         self.calendar_combo.pack_start(text_cell, True)
         self.calendar_combo.add_attribute(text_cell, "text", 1)
-        self.calendar_combo.set_active(0)
-        self.calendar_combo.set_sensitive(self.is_new)
+        active_calendar = next(
+            (index for index, calendar in enumerate(self.calendar_options)
+             if calendar.get("id", calendar.get("calendar_id"))
+             == self.event.get("calendar_id")),
+            0,
+        )
+        self.calendar_combo.set_active(active_calendar)
+        self.calendar_combo.set_sensitive(self.editable and len(self.calendar_options) > 1)
         grid.attach(self.calendar_combo, 1, 1, 2, 1)
 
         grid.attach(lbl(_("All day")), 0, 2, 1, 1)
@@ -325,6 +340,7 @@ class EventDialog(Gtk.Dialog):
             "date_end":    end_date,
             "time_start":  time_start,
             "time_end":    time_end,
+            "original_calendar_id": self.event.get("calendar_id"),
         }
         calendar = self.calendar_options[self.calendar_combo.get_active()]
         if (calendar.get("provider") == "google"
