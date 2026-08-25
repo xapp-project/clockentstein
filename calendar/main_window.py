@@ -1,5 +1,4 @@
 import datetime
-import os
 
 import gi
 gi.require_version("Gtk", "3.0")
@@ -825,22 +824,21 @@ class MainWindow(Gtk.Window):
                     return
             self._set_refreshing(True)
             self._set_status(_("Connecting…"))
-            self._connect_worker(None, "goa", account_id)
+            self._connect_worker("goa", account_id)
             return
-        filename = os.path.join(os.path.dirname(__file__), "backends", "google.json")
         self._set_refreshing(True)
         self._set_status(_("Connecting…"))
-        self._connect_worker(filename, "clockenstein", None)
+        self._connect_worker("clockenstein", None)
 
     @run_async
-    def _connect_worker(self, filename, auth_provider, goa_account_id):
+    def _connect_worker(self, auth_provider, goa_account_id):
         try:
             if auth_provider == "goa":
                 account_id = self.store.google.connect_goa(
                     goa_account_id, self._connection_progress
                 )
             else:
-                account_id = self.store.google.connect(filename, self._connection_progress)
+                account_id = self.store.google.connect(self._connection_progress)
             self._connection_progress(_("Requesting initial synchronization…"))
             self._call_daemon("RefreshAccount", GLib.Variant(
                 "(ss)", ("google", account_id)

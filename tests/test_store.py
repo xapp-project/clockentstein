@@ -352,12 +352,12 @@ class GoogleMappingTests(unittest.TestCase):
 
     def test_configured_credentials_can_override_scopes(self):
         """The bundled OAuth file may specify scopes, otherwise defaults are used."""
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "google.json"
-            path.write_text('{"clockenstein_scopes": ["custom-scope"], "installed": {}}')
-            self.assertEqual(GoogleBackend._scopes_for_credentials(path), ["custom-scope"])
-            path.write_text('{"installed": {}}')
-            self.assertEqual(GoogleBackend._scopes_for_credentials(path), SCOPES)
+        with patch.object(GoogleBackend, "_read_oauth_client_config",
+                          return_value={"clockenstein_scopes": ["custom-scope"]}):
+            self.assertEqual(GoogleBackend._scopes_for_credentials(), ["custom-scope"])
+        with patch.object(GoogleBackend, "_read_oauth_client_config",
+                          return_value={"installed": {}}):
+            self.assertEqual(GoogleBackend._scopes_for_credentials(), SCOPES)
 
     def test_all_day_end_is_exclusive(self):
         """A one-day all-day event uses Google's exclusive next-day end date."""

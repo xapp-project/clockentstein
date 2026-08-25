@@ -46,7 +46,6 @@ install_data(
 install_data(
   'calendar/backends/google.py',
   'calendar/backends/caldav.py',
-  'calendar/backends/google.json',
   install_dir: join_paths(calendar_dir, 'backends'),
 )
 
