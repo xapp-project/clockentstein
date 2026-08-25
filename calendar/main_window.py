@@ -789,22 +789,81 @@ class MainWindow(Gtk.Window):
         dialog.destroy()
 
     def _connect_google(self, _button=None):
+        auth_provider = self.settings.get_string("google-oauth-provider")
+        if auth_provider == "goa":
+            try:
+                accounts = self.store.google.list_goa_accounts()
+            except Exception as exc:
+                self._google_connection_failed(str(exc))
+                return
+            if not accounts:
+                self._google_connection_failed(
+                    _("No Google accounts were found in Online Accounts.")
+                )
+                return
+            account_id = accounts[0]["id"]
+            if len(accounts) > 1:
+                dialog = Gtk.Dialog(title=_("Google Account"), transient_for=self, modal=True)
+                dialog.add_buttons(_("Cancel"), Gtk.ResponseType.CANCEL,
+                                   _("Connect"), Gtk.ResponseType.OK)
+                box = dialog.get_content_area()
+                box.set_spacing(8)
+                box.set_border_width(12)
+                box.pack_start(Gtk.Label(
+                    label=_("Choose an account"), xalign=0
+                ), False, False, 0)
+                combo = Gtk.ComboBoxText()
+                for account in accounts:
+                    combo.append(account["id"], account["name"])
+                combo.set_active(0)
+                box.pack_start(combo, False, False, 0)
+                dialog.show_all()
+                response = dialog.run()
+                account_id = combo.get_active_id()
+                dialog.destroy()
+                if response != Gtk.ResponseType.OK:
+                    return
+            self._set_refreshing(True)
+            self._set_status(_("Connecting…"))
+            self._connect_worker(None, "goa", account_id)
+            return
         filename = os.path.join(os.path.dirname(__file__), "backends", "google.json")
         self._set_refreshing(True)
         self._set_status(_("Connecting…"))
-        self._connect_worker(filename)
+        self._connect_worker(filename, "clockenstein", None)
 
     @run_async
-    def _connect_worker(self, filename):
+    def _connect_worker(self, filename, auth_provider, goa_account_id):
         try:
-            account_id = self.store.google.connect(filename, self._connection_progress)
+            if auth_provider == "goa":
+                account_id = self.store.google.connect_goa(
+                    goa_account_id, self._connection_progress
+                )
+            else:
+                account_id = self.store.google.connect(filename, self._connection_progress)
             self._connection_progress(_("Requesting initial synchronization…"))
             self._call_daemon("RefreshAccount", GLib.Variant(
                 "(ss)", ("google", account_id)
             ))
             self._sync_request_accepted()
         except Exception as exc:
-            self._remote_done([str(exc)])
+            self._google_connection_failed(str(exc))
+
+    @run_idle
+    def _google_connection_failed(self, error):
+        self._set_refreshing(False)
+        self._set_status(error)
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            modal=True,
+            message_type=Gtk.MessageType.ERROR,
+            buttons=Gtk.ButtonsType.CLOSE,
+            text=_("Could not connect the Google account"),
+        )
+        dialog.format_secondary_text(error)
+        dialog.run()
+        dialog.destroy()
+        return False
 
     @run_idle
     def _connection_progress(self, message):

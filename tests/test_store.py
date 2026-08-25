@@ -1,6 +1,7 @@
 import datetime
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 import sys
 
@@ -302,6 +303,35 @@ class GoogleMappingTests(unittest.TestCase):
             "accessRole": "owner", "backgroundColor": "#123456",
         }])
         self.assertTrue(calendars[0]["primary"])
+        self.assertTrue(calendars[0]["reminders"])
+
+    def test_goa_connection_records_its_authorization_provider(self):
+        """A GOA-backed account stores its source instead of token credentials."""
+        class FakeProperties:
+            id = "goa-account"
+            presentation_identity = "me@example.com"
+
+        class FakeAccount:
+            props = FakeProperties()
+
+        class FakeObject:
+            @staticmethod
+            def get_account():
+                return FakeAccount()
+
+        calendars = [{"id": "me@example.com", "summary": "Personal",
+                      "primary": True, "accessRole": "owner"}]
+        with tempfile.TemporaryDirectory() as directory:
+            backend = GoogleBackend(Path(directory))
+            with patch.object(backend, "_find_goa_account", return_value=FakeObject()), \
+                    patch.object(backend, "_build_goa_service", return_value=object()), \
+                    patch.object(backend, "_fetch_calendars", return_value=calendars):
+                account_id = backend.connect_goa("goa-account")
+            account = backend.accounts[0]
+            self.assertEqual(account_id, "goa:goa-account")
+            self.assertEqual(account["auth_provider"], "goa")
+            self.assertEqual(account["goa_account_id"], "goa-account")
+            self.assertNotIn("token", account)
 
     def test_old_google_auth_credentials_can_be_serialized(self):
         """Credentials lacking a modern serializer still produce valid token JSON."""

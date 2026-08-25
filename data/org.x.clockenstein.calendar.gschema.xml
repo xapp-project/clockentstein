@@ -12,5 +12,13 @@
       <default>750</default>
       <range min="460" max="32768"/>
     </key>
+    <key name="google-oauth-provider" type="s">
+      <default>'clockenstein'</default>
+      <summary>Google authorization provider</summary>
+      <description>
+        Authorization provider used when connecting new Google accounts.
+        Supported values are clockenstein and goa.
+      </description>
+    </key>
   </schema>
 </schemalist>

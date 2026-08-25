@@ -82,8 +82,10 @@ class GoogleBackend:
         account = next((a for a in self.accounts if a["id"] == account_id), None)
         if account is None:
             account = {"id": account_id, "name": account_id, "token": token_name,
-                       "calendars": [], "events": [], "scopes": scopes}
+                       "calendars": [], "events": [], "scopes": scopes,
+                       "auth_provider": "clockenstein"}
             self.accounts.append(account)
+        account["auth_provider"] = "clockenstein"
         account["token"] = token_name
         account["scopes"] = scopes
         account["calendars"] = self._merge_calendar_preferences(account.get("calendars", []), calendars)
@@ -93,13 +95,59 @@ class GoogleBackend:
         self._save()
         return account_id
 
+    def list_goa_accounts(self):
+        result = []
+        for goa_object in self._goa_accounts():
+            account = goa_object.get_account()
+            result.append({
+                "id": account.props.id,
+                "name": account.props.presentation_identity or account.props.id,
+            })
+        return result
+
+    def connect_goa(self, goa_account_id, progress=None):
+        goa_object = self._find_goa_account(goa_account_id)
+        goa_account = goa_object.get_account()
+        if progress:
+            progress(_("Requesting authorization from Online Accounts…"))
+        service = self._build_goa_service(goa_object)
+        if progress:
+            progress(_("Loading your Google calendars…"))
+        calendars = self._fetch_calendars(service)
+        primary = next((calendar for calendar in calendars if calendar.get("primary")), None)
+        if not primary:
+            raise GoogleUnavailable(_("Google did not return a primary calendar"))
+        account_id = f"goa:{goa_account_id}"
+        account = next((item for item in self.accounts if item["id"] == account_id), None)
+        if account is None:
+            account = {
+                "id": account_id,
+                "name": goa_account.props.presentation_identity or primary["id"],
+                "auth_provider": "goa",
+                "goa_account_id": goa_account_id,
+                "calendars": [],
+                "events": [],
+            }
+            self.accounts.append(account)
+        account["auth_provider"] = "goa"
+        account["goa_account_id"] = goa_account_id
+        account["name"] = goa_account.props.presentation_identity or primary["id"]
+        account["calendars"] = self._merge_calendar_preferences(
+            account.get("calendars", []), calendars
+        )
+        self._services[account_id] = service
+        self._errors.pop(account_id, None)
+        self._save()
+        return account_id
+
     def disconnect(self, account_id: str):
         account = next((a for a in self.accounts if a["id"] == account_id), None)
         if not account:
             return
-        token = self.data_dir / account.get("token", "missing")
-        if token.exists():
-            token.unlink()
+        if account.get("auth_provider", "clockenstein") == "clockenstein":
+            token = self.data_dir / account.get("token", "missing")
+            if token.exists():
+                token.unlink()
         self.accounts.remove(account)
         self._services.pop(account_id, None)
         self._credentials.pop(account_id, None)
@@ -184,7 +232,13 @@ class GoogleBackend:
             if target_account_id and account_id != target_account_id:
                 continue
             service = self._services.get(account_id)
-            if service is None and account_id in self._credentials:
+            if account.get("auth_provider", "clockenstein") == "goa":
+                try:
+                    service = self._refresh_goa_service(account)
+                except Exception as exc:
+                    self._errors[account_id] = str(exc)
+                    service = None
+            elif service is None and account_id in self._credentials:
                 try:
                     service = self._build_service(self._credentials[account_id])
                     self._services[account_id] = service
@@ -259,7 +313,7 @@ class GoogleBackend:
                                 or not _raw_overlaps(event, start, end)]
                 account["events"] = retained + fetched
                 creds = self._credentials.get(account_id)
-                if creds is not None:
+                if creds is not None and account.get("token"):
                     (self.data_dir / account["token"]).write_text(
                         self._credentials_json(creds), encoding="utf-8"
                     )
@@ -303,6 +357,15 @@ class GoogleBackend:
         return True
 
     def _require_service(self, account_id):
+        account = next((item for item in self.accounts if item["id"] == account_id), None)
+        if account and account.get("auth_provider", "clockenstein") == "goa":
+            try:
+                return self._refresh_goa_service(account)
+            except Exception as exc:
+                self._errors[account_id] = str(exc)
+                raise GoogleUnavailable(
+                    _("This Google account is offline.")
+                ) from exc
         service = self._services.get(account_id)
         if service is None and account_id in self._credentials:
             try:
@@ -312,7 +375,7 @@ class GoogleBackend:
             except Exception as exc:
                 self._errors[account_id] = str(exc)
         if not service:
-            raise GoogleUnavailable(_("This Google account is offline. Its cached events are read-only."))
+            raise GoogleUnavailable(_("This Google account is offline."))
         return service
 
     def _validate_event_range(self, data):
@@ -339,6 +402,10 @@ class GoogleBackend:
     def _load_services(self):
         for account in self.accounts:
             try:
+                if account.get("auth_provider", "clockenstein") == "goa":
+                    self._refresh_goa_service(account)
+                    self._errors.pop(account["id"], None)
+                    continue
                 scopes = account.get("scopes", SCOPES)
                 creds = Credentials.from_authorized_user_file(str(self.data_dir / account["token"]), scopes)
                 # Older distro versions restore only the refresh token here.
@@ -349,6 +416,58 @@ class GoogleBackend:
                 self._errors.pop(account["id"], None)
             except Exception as exc:
                 self._errors[account["id"]] = str(exc)
+
+    @staticmethod
+    def _goa_accounts():
+        try:
+            import gi
+            gi.require_version("Goa", "1.0")
+            from gi.repository import Goa
+        except (ImportError, ValueError) as exc:
+            raise GoogleUnavailable(
+                _("The gir1.2-goa-1.0 package is missing")
+            ) from exc
+        try:
+            client = Goa.Client.new_sync(None)
+            return [
+                item for item in client.get_accounts()
+                if item.get_account().props.provider_type == "google"
+                and item.get_calendar() is not None
+                and item.get_oauth2_based() is not None
+            ]
+        except Exception as exc:
+            raise GoogleUnavailable(_("Could not contact Online Accounts: %s") % exc) from exc
+
+    @classmethod
+    def _find_goa_account(cls, goa_account_id):
+        for goa_object in cls._goa_accounts():
+            if goa_object.get_account().props.id == goa_account_id:
+                return goa_object
+        raise GoogleUnavailable(_("The selected Online Account is unavailable"))
+
+    @classmethod
+    def _build_goa_service(cls, goa_object):
+        account = goa_object.get_account()
+        oauth2 = goa_object.get_oauth2_based()
+        try:
+            account.call_ensure_credentials_sync(None)
+            result = oauth2.call_get_access_token_sync(None)
+            token = next((value for value in reversed(result)
+                          if isinstance(value, str)), None) if isinstance(result, tuple) else result
+            if not token:
+                raise GoogleUnavailable(_("Online Accounts returned no access token"))
+            return cls._build_service(Credentials(token=token))
+        except Exception as exc:
+            if isinstance(exc, GoogleUnavailable):
+                raise
+            raise GoogleUnavailable(_("Could not obtain Google authorization: %s") % exc) from exc
+
+    def _refresh_goa_service(self, account):
+        goa_object = self._find_goa_account(account["goa_account_id"])
+        service = self._build_goa_service(goa_object)
+        self._services[account["id"]] = service
+        self._errors.pop(account["id"], None)
+        return service
 
     @staticmethod
     def _fetch_calendars(service, stats=None):

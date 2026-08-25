@@ -7,8 +7,10 @@ Calendar application for Linux desktops.
 ## Supported Calendars
 
 - Local calendars.
-- Google calendars (read-only when disconnected or offline)
-- CalDAV, Nextcloud, Memotoo, etc (read-only when disconnected or offline)
+- Google calendars
+- CalDAV calendars (Nextcloud, Memotoo, etc)
+
+Remote calendars are read-only when disconnected or offline.
 
 ## Architecture and synchronization
 
