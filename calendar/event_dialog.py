@@ -3,7 +3,7 @@ from typing import Optional
 
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk
+from gi.repository import Gtk, Pango
 from xapp.util import l10n
 
 _ = l10n("clockenstein")
@@ -200,6 +200,10 @@ class EventDialog(Gtk.Dialog):
         grid.attach(scroll, 1, 6, 2, 1)
 
         self.status_label = Gtk.Label(label="")
+        self.status_label.set_xalign(0)
+        self.status_label.set_selectable(True)
+        self.status_label.set_line_wrap(True)
+        self.status_label.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
         self.status_label.get_style_context().add_class("error")
         box.pack_start(self.status_label, False, False, 0)
 
