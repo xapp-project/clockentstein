@@ -402,6 +402,16 @@ class GoogleMappingTests(unittest.TestCase):
         self.assertFalse(event["editable"])
         self.assertEqual(event["date_end"], datetime.date(2026, 8, 22))
 
+    def test_google_birthday_event_is_read_only(self):
+        """The general event editor must not rewrite Google's special event types."""
+        raw = {"id": "birthday", "eventType": "birthday", "summary": "Birthday",
+               "start": {"date": "2026-08-22"}, "end": {"date": "2026-08-23"}}
+        calendar = {"id": "primary", "name": "Personal", "color": "#123456",
+                    "access_role": "owner"}
+        event = google_event_to_dict(raw, calendar, {"id": "me@example.com"}, True)
+        self.assertEqual(event["event_type"], "birthday")
+        self.assertFalse(event["editable"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -595,6 +595,7 @@ def google_event_to_dict(raw, calendar, account, online):
         date_start, date_end = start_dt.date(), end_dt.date()
         time_start, time_end = start_dt.time().replace(tzinfo=None), end_dt.time().replace(tzinfo=None)
     writable = calendar.get("access_role") in ("writer", "owner")
+    event_type = raw.get("eventType", "default")
     return {"uid": raw.get("id", ""), "summary": raw.get("summary") or _("Untitled"),
             "location": raw.get("location", ""), "description": raw.get("description", ""),
             "all_day": all_day, "date_start": date_start, "date_end": date_end,
@@ -604,7 +605,9 @@ def google_event_to_dict(raw, calendar, account, online):
             "calendar_color": calendar.get("color", "#4285f4"),
             "reminders": calendar.get("reminders", True),
             "sync_range": calendar.get("sync_range", "normal"),
-            "editable": bool(online and writable), "cached": not online}
+            "event_type": event_type,
+            "editable": bool(online and writable and event_type == "default"),
+            "cached": not online}
 
 
 def google_event_fits_sync_range(calendar, date_start, date_end, today=None):

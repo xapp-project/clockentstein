@@ -103,6 +103,22 @@ class EventDialog(Gtk.Dialog):
         self.connect("response", self._on_response)
         if not editable:
             self._set_form_sensitive(False)
+            if (self.event.get("provider") == "google"
+                    and self.event.get("event_type") != "default"):
+                event_type = self.event.get("event_type", "")
+                event_type_name = {
+                    "birthday": _("Birthday"),
+                    "focusTime": _("Focus time"),
+                    "fromGmail": _("From Gmail"),
+                    "outOfOffice": _("Out of office"),
+                    "workingLocation": _("Working location"),
+                }.get(event_type, event_type)
+                self.status_label.get_style_context().remove_class("error")
+                self.status_label.get_style_context().add_class("dim-label")
+                self.status_label.set_text(
+                    _("This type of event (%s) cannot be edited.")
+                    % event_type_name
+                )
 
     def _build_form(self):
         box = self.get_content_area()
