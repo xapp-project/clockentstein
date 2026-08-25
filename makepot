@@ -10,4 +10,4 @@ xgettext --language=Python \
     --keyword=_ \
     --keyword=N_ \
     --output=clockenstein.pot \
-    calendar/*.py calendar/backends/*.py calendar/views/*.py
+    calendar/*.py calendar/backends/*.py calendar/views/*.py agent/*.py

@@ -51,6 +51,7 @@ Depends:
  python3,
  python3-gi,
  python3-setproctitle,
+ python3-xapp,
 Description: Desktop reminder agent for Clockenstein
  The Clockenstein notification agent listens for reminder signals from the
  Clockenstein daemon and displays them in reminder windows.

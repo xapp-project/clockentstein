@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 import datetime
+import gettext
 import math
 import os
 import signal
@@ -12,6 +13,11 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("GSound", "1.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, Gio, GLib, GSound, Gtk, Pango
+from xapp.threading import run_idle
+from xapp.util import l10n
+
+_ = l10n("clockenstein")
+APPLICATION_NAME = _("Calendar Event")
 
 BUS_NAME = "org.x.clockenstein.Calendar.Service"
 BUS_PATH = "/org/x/clockenstein/Calendar/Service"
@@ -39,13 +45,13 @@ class NotificationAgent:
 
     def run(self, test_reminder=None):
         GLib.set_prgname("org.x.clockenstein.Calendar")
-        GLib.set_application_name("Calendar Reminder")
+        GLib.set_application_name(APPLICATION_NAME)
         Gtk.init(None)
         Gtk.Window.set_default_icon_name("clockenstein-calendar")
         self._log("Starting")
         self.sound.init(None)
         if test_reminder:
-            GLib.idle_add(self._show_reminder, *test_reminder)
+            self._show_reminder(*test_reminder)
         else:
             self.connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
             self.subscription_id = self.connection.signal_subscribe(
@@ -80,15 +86,16 @@ class NotificationAgent:
                            _signal, parameters):
         (uid, summary, location, description, calendar_name, calendar_color,
          start_timestamp, all_day) = parameters.unpack()
-        self._log(f"Received Reminder for {uid}")
+        self._log(f"Received reminder for {uid}")
         self._show_reminder(
-            uid, summary or "Clockenstein", start_timestamp, location, description,
+            uid, summary or APPLICATION_NAME, start_timestamp, location, description,
             calendar_name, calendar_color
         )
 
+    @run_idle
     def _show_reminder(self, uid, summary, start_timestamp, location, description,
                        calendar_name, calendar_color):
-        window = Gtk.Window(title="Calendar Event")
+        window = Gtk.Window(title=APPLICATION_NAME)
         window.reminder_uid = uid
         window.set_default_size(420, -1)
         window.set_resizable(False)
@@ -103,9 +110,8 @@ class NotificationAgent:
         menu_button.set_image(Gtk.Image.new_from_icon_name(
             "open-menu-symbolic", Gtk.IconSize.BUTTON
         ))
-        menu_button.set_tooltip_text("Menu")
         menu = Gtk.Menu()
-        mute = Gtk.CheckMenuItem.new_with_label("Mute")
+        mute = Gtk.CheckMenuItem.new_with_label(_("Mute"))
         mute.set_active(self.muted)
         mute.connect("toggled", self._mute_toggled)
         self.mute_items.add(mute)
@@ -184,7 +190,7 @@ class NotificationAgent:
         open_calendar_button.set_image(Gtk.Image.new_from_icon_name(
             "x-office-calendar-symbolic", Gtk.IconSize.BUTTON
         ))
-        open_calendar_button.set_tooltip_text("Open Calendar")
+        open_calendar_button.set_tooltip_text(_("Open Calendar"))
         open_calendar_button.connect(
             "clicked", self._open_calendar, start_timestamp, uid
         )
@@ -194,11 +200,11 @@ class NotificationAgent:
         buttons.set_halign(Gtk.Align.END)
         buttons.set_margin_top(6)
         buttons.set_spacing(6)
-        dismiss = Gtk.Button.new_with_label("Dismiss")
+        dismiss = Gtk.Button.new_with_label(_("Dismiss"))
         dismiss.get_style_context().add_class("destructive-action")
         snooze = Gtk.MenuButton()
         snooze_content = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        snooze_content.pack_start(Gtk.Label(label="Snooze"), False, False, 0)
+        snooze_content.pack_start(Gtk.Label(label=_("Snooze")), False, False, 0)
         snooze_content.pack_start(Gtk.Image.new_from_icon_name(
             "pan-down-symbolic", Gtk.IconSize.MENU
         ), False, False, 0)
@@ -206,7 +212,7 @@ class NotificationAgent:
         snooze.get_style_context().add_class("suggested-action")
         snooze_menu = Gtk.Menu()
         for minutes in (1, 5, 10):
-            label = f"{minutes} minute" if minutes == 1 else f"{minutes} minutes"
+            label = gettext.ngettext("%d minute", "%d minutes", minutes) % minutes
             item = Gtk.MenuItem.new_with_label(label)
             item.connect("activate", self._snooze_selected, window, uid, minutes)
             snooze_menu.append(item)
@@ -525,15 +531,17 @@ def _relative_start_label(start_timestamp, now=None):
     seconds = start_timestamp - now.timestamp()
     if seconds > 0:
         minutes = math.ceil(seconds / 60)
-        if minutes == 1:
-            return "Starts in 1 minute"
-        return f"Starts in {minutes} minutes"
+        return gettext.ngettext(
+            "Starts in %d minute", "Starts in %d minutes", minutes
+        ) % minutes
     if seconds > -60:
-        return "Starts now"
+        return _("Starts now")
     minutes = math.floor(-seconds / 60)
-    if minutes == 1:
-        return "This event started 1 minute ago"
-    return f"This event started {minutes} minutes ago"
+    return gettext.ngettext(
+        "This event started %d minute ago",
+        "This event started %d minutes ago",
+        minutes,
+    ) % minutes
 
 
 if __name__ == "__main__":
