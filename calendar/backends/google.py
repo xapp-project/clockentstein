@@ -352,9 +352,18 @@ class GoogleBackend:
     def update_event(self, uid, data):
         self._validate_event_range(data)
         service = self._require_service(data["account_id"])
+        source_id = data.get("original_calendar_id") or data["calendar_id"]
+        if source_id != data["calendar_id"]:
+            service.events().move(calendarId=source_id, eventId=uid,
+                                  destination=data["calendar_id"]).execute()
         raw = service.events().patch(calendarId=data["calendar_id"], eventId=uid,
                                      body=event_dict_to_google(data)).execute()
         raw["_calendar_id"] = data["calendar_id"]
+        if source_id != data["calendar_id"]:
+            account = next(a for a in self.accounts if a["id"] == data["account_id"])
+            account["events"] = [event for event in account.get("events", [])
+                                 if not (event.get("id") == uid
+                                         and event.get("_calendar_id") == source_id)]
         self._upsert_cached(data["account_id"], raw)
         return raw
 
