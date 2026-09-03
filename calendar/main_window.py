@@ -206,7 +206,7 @@ class MainWindow(Gtk.Window):
 
     def _show_about(self, _item):
         dialog = Gtk.AboutDialog(transient_for=self, modal=True)
-        dialog.set_program_name("Clocksenstein")
+        dialog.set_program_name("Clockenstein")
         dialog.set_version("__PROJECT_VERSION__")
         dialog.set_comments(_("A calendar application for Linux desktops"))
         dialog.set_logo_icon_name("clockenstein-calendar")
