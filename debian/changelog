@@ -1,3 +1,65 @@
+clockenstein (1.0.0) alfa; urgency=medium
+
+  [ Clement Lefebvre ]
+  * readme: Add a screenshot
+  * Fix blurry icon in DE alt-tab selectors
+  * Turn the app into a singleton
+  * Replace GTK date widget with a custom widget
+  * Clean up day/month names
+  * headerbar: Move range navigator to center, move buttons to the sides
+  * Make double click create a new event
+  * Name the Unix process
+  * Add a ./test script
+  * Make event boxes look nicer
+  * Dim past events in all views
+  * Simplify tooltips
+  * month view: Fix card style for multiday events spanning to another week
+  * sidebar: Fix expanded sidebar when view is empty
+  * week view: Expand evenly when there are no events
+  * Fix restoring window dimensions
+  * sidebar: Add coming up section
+  * Dim offline calendars when offline or during refresh
+  * week view: Highlight current day
+  * week view: Use same format/names for weekday names
+  * Improve navigation
+  * day view: Add date, always see all-day events
+  * week view: Always see all-day events
+  * views: Fix clipped gutter label at the top
+  * views: Scroll automatically
+  * readme: Update screenshot
+  * Implement a daemon and dbus interface
+  * daemon: Add a verbose mode
+  * client: Add a --date CLI argument to focus a date
+  * daemon: Name the process
+  * daemon: Don't belong to calendar
+  * Update .gitignore
+  * daemon: Move to a systemd unit
+  * gsettings: lowercase schema name
+  * daemon: Use gsettings for verbosity
+  * google: Optimize the number of requests sent to the API
+  * google: Forbid event creation/edition outside the sync range
+  * google: Don't refresh the remote when navigating dates
+  * sync: Improve synchronization between daemon and client
+  * sync: Move all sync jobs to daemon
+  * readme: Add architecture info
+  * google: Only perform calendar discovery during account setup
+  * Implement a notification agent
+  * Make reminders calendar-specific
+  * Add support for Online Accounts
+  * google: Switch to console app
+  * l10n: Set up localization for the agent
+  * event dialog: Make error text wrap and selectable
+  * google: Make non-default event types non-editable
+
+  [ Michael Webster ]
+  * main_window.py: Clocksenstein -> Clockenstein.
+
+  [ Clement Lefebvre ]
+  * event dialog: Let the user change the calendar
+  * l10n: Update POT
+
+ -- Clement Lefebvre <root@linuxmint.com>  Fri, 04 Sep 2026 16:15:42 +0100
+
 clockenstein (0.1.0) unstable; urgency=medium
 
   * Initial Debian package.
